@@ -16,6 +16,11 @@
 #define EVE_MOSI  21
 #define EVE_CS    47
 #define EVE_PDN   45
+
+int creatures = 25;
+int artifacts = 10; 
+int sorcerys = 5;
+int instants = 7;
 void setup()
 {
     pinMode(EVE_CS, OUTPUT);
@@ -46,7 +51,8 @@ void setup()
         EVE_cmd_dl(DL_CLEAR_COLOR_RGB | 0xffffff); /* set the default clear color to white */
         EVE_cmd_dl(DL_CLEAR | CLR_COL | CLR_STN | CLR_TAG); /* clear the screen - this and the previous prevent artifacts between lists, attributes are the color, stencil and tag buffers */
         EVE_color_rgb(0x000000); /* set the color to black */
-        EVE_cmd_text(EVE_HSIZE/2, EVE_VSIZE/2, 30, EVE_OPT_CENTER, "PENIS!");
+        EVE_cmd_text(EVE_HSIZE/2, EVE_VSIZE/2, 30, EVE_OPT_CENTER, "HELLO WORLD!");
+        EVE_cmd_text(30, 25, 22, EVE_OPT_CENTER, "Creatures: 25");
         EVE_cmd_dl(DL_DISPLAY); /* mark the end of the display-list */
         EVE_cmd_dl(CMD_SWAP); /* make this list active */
 //        EVE_execute_cmd(); /* wait for EVE to be no longer busy */

@@ -5,6 +5,8 @@
 #include "wifi_setup.h"
 #include <Arduino.h>
 #include <stdio.h>
+#include <SPI.h>
+#include <EVE.h>
 
 void getTypeLine();
 bool connectWiFi();
@@ -25,6 +27,13 @@ String Type; // Global string to store the card type
 // Define servo types
 #define SERVO_STANDARD 0   // SF006C - standard position servo (0-180°)
 #define SERVO_CONTINUOUS 1 // FS90R - continuous rotation servo (speed control)
+
+// ===== SCREEN PINS CONFIGURATION =====
+#define EVE_SCK 13
+#define EVE_MISO 14
+#define EVE_MOSI 21
+#define EVE_CS 47
+#define EVE_PDN 45
 
 // Configure your servos here
 const int NUM_SERVOS = 5;
@@ -53,7 +62,39 @@ void setup()
   Serial.begin(115200);
   Serial0.begin(115200, SERIAL_8N1, 44, 43);
   delay(2000);
-  Serial.println("\n\n=== ESP32-S3 MOTOR CONTROL WITH DISPLAY ===");
+  pinMode(EVE_CS, OUTPUT);
+  digitalWrite(EVE_CS, HIGH);
+  pinMode(EVE_PDN, OUTPUT);
+  digitalWrite(EVE_PDN, LOW);
+
+#if defined(ESP32)
+#if defined(EVE_USE_ESP_IDF)
+  /* not using the Arduino SPI class in order to use DMA */
+  EVE_init_spi();
+#else
+  /* using the Arduino SPI class to be compatible with other devices */
+  SPI.begin(EVE_SCK, EVE_MISO, EVE_MOSI);
+#endif
+#elif defined(ARDUINO_NUCLEO_F446RE) || defined(WIZIOPICO) || defined(PICOPI)
+  /* not using the Arduino SPI class in order to use DMA */
+  EVE_init_spi();
+#else
+  SPI.begin(); /* sets up the SPI to run in Mode 0 and 1 MHz */
+  /* switch to 8MHz, note, init must be done with <11MHz */
+  SPI.beginTransaction(SPISettings(8UL * 1000000UL, MSBFIRST, SPI_MODE0));
+#endif
+  if (E_OK == EVE_init()) /* make sure the init finished correctly */
+  {
+    EVE_cmd_dl(CMD_DLSTART);                            /* instruct the co-processor to start a new display list */
+    EVE_cmd_dl(DL_CLEAR_COLOR_RGB | 0xffffff);          /* set the default clear color to white */
+    EVE_cmd_dl(DL_CLEAR | CLR_COL | CLR_STN | CLR_TAG); /* clear the screen - this and the previous prevent artifacts between lists, attributes are the color, stencil and tag buffers */
+    EVE_color_rgb(0x000000);                            /* set the color to black */
+    EVE_cmd_text(EVE_HSIZE / 2, EVE_VSIZE / 2, 30, EVE_OPT_CENTER, "HELLO WORLD!");
+    EVE_cmd_text(30, 25, 22, EVE_OPT_CENTER, "Creatures: 25");
+    EVE_cmd_dl(DL_DISPLAY); /* mark the end of the display-list */
+    EVE_cmd_dl(CMD_SWAP);   /* make this list active */
+                            //        EVE_execute_cmd(); /* wait for EVE to be no longer busy */
+  }
 
   ledcSetup(SHARED_PWM_CHANNEL, pwmFreq, pwmResolution);
   Serial.println("Servo mode: SHARED CHANNEL (one at a time)");
@@ -66,12 +107,12 @@ void setup()
     Serial.println("  Servo " + String(i) + ": " + typeStr + " on pin " + String(servoPins[i]));
   }
 
-  if (!connectWiFi())
-  {
-    Serial.println("[FATAL] WiFi failed. Rebooting...");
-    delay(2000);
-    ESP.restart();
-  }
+  /*   if (!connectWiFi())
+    {
+      Serial.println("[FATAL] WiFi failed. Rebooting...");
+      delay(2000);
+      ESP.restart();
+    } */
   moveAllToHome(); // Move all servos to their home position at startup
 }
 typedef enum
@@ -107,7 +148,7 @@ void loop()
     {
     case STATE_NEUTRAL:
       rotateServo(0, 0, 1000); // Rotate servo 1 to 0° and hold for 1 second
-      rotateServo(1, 87, 1000);  
+      rotateServo(1, 85, 1000);
       // Prompt for card type at the start
       Serial.println("\n\n=== ENTER CARD TYPE ===");
       Serial.println("Valid types: Creature, Instant, Sorcery, Enchantment, Artifact, Planeswalker, Land");
@@ -122,7 +163,7 @@ void loop()
       Serial.println("Card type set to: " + Type);
       delay(1000);
       if (Type == "Creature")
-      {  
+      {
         currentState = STATE_CREATURE;
         Serial.println("Transitioning to CREATURE state");
       }
@@ -163,42 +204,53 @@ void loop()
       }
 
       break;
+    case STATE_LAND:
+      rotateServo(0, 135, 1000);
+      rotateServo(1, 40, 1000);
+      rotateServo(1, 85, 1000);
+      currentState = STATE_NEUTRAL; // Transition to next state
+      Serial.println("LAND SORTED");
+      break;
+
     case STATE_CREATURE:
-      rotateServo(0, 45, 1000); 
-      rotateServo(1, 20, 1000); 
+      rotateServo(1, 120, 1000);
+      rotateServo(1, 85, 1000);
       currentState = STATE_NEUTRAL; // Transition to next state
       Serial.println("CREATURE SORTED");
       break;
+
+    case STATE_ARTIFACT:
+      currentState = STATE_NEUTRAL; // Transition to next state
+      Serial.println("ARTIFACT SORTED");
+      break;
+
+    case STATE_ENCHANTMENT:
+      rotateServo(0, 180, 1000);
+      rotateServo(1, 40, 1000);
+      rotateServo(1, 85, 1000);
+      currentState = STATE_NEUTRAL; // Transition to next state
+      Serial.println("ENCHANTMENT SORTED");
+      break;
+
     case STATE_INSTANT:
-      rotateServo(0, 90, 1000); 
-      rotateServo(1, 20, 1000); 
+      rotateServo(0, 90, 1000);
+      rotateServo(1, 40, 1000);
+      rotateServo(1, 85, 1000);
       currentState = STATE_NEUTRAL; // Transition to next state
       Serial.println("INSTANT SORTED");
       break;
     case STATE_SORCERY:
-      rotateServo(0, 135, 1000); 
-      rotateServo(1, 20, 1000); 
+      rotateServo(0, 135, 1000);
+      rotateServo(1, 40, 1000);
+      rotateServo(1, 85, 1000);
       currentState = STATE_NEUTRAL; // Transition to next state
       Serial.println("SORCERY SORTED");
-      break;
-    case STATE_ENCHANTMENT:
-      rotateServo(0, 180, 1000); 
-      rotateServo(1, 20, 1000); 
-      currentState = STATE_NEUTRAL; // Transition to next state
-      Serial.println("ENCHANTMENT SORTED");
-      break;
-    case STATE_ARTIFACT:
-      currentState = STATE_NEUTRAL; // Transition to next state
-      Serial.println("ARTIFACT SORTED");
       break;
     case STATE_PLANESWALKER:
       currentState = STATE_NEUTRAL; // Transition to next state
       Serial.println("PLANESWALKER SORTED");
       break;
-    case STATE_LAND:
-      currentState = STATE_NEUTRAL; // Transition to next state
-      Serial.println("LAND SORTED");
-      break;
+
     case STATE_UNKNOWN:
       currentState = STATE_NEUTRAL; // Transition to next state
       Serial.println("UNKNOWN SORTED");
@@ -307,17 +359,16 @@ void Stop(int servoId, int Time)
 
 void servoToDegrees(int servoId, int degrees)
 {
-    if (servoId < 0 || servoId >= NUM_SERVOS)
-        return;
+  if (servoId < 0 || servoId >= NUM_SERVOS)
+    return;
 
-    int minPulse = 500;   // full range
-    int maxPulse = 2500;
+  int minPulse = 500; // full range
+  int maxPulse = 2500;
 
-    int us = minPulse + (degrees * (maxPulse - minPulse)) / 180;
+  int us = minPulse + (degrees * (maxPulse - minPulse)) / 180;
 
-    writeServoMicroseconds(servoId, us);
+  writeServoMicroseconds(servoId, us);
 }
-
 
 // ===== FOR CONTINUOUS ROTATION SERVOS (like FS90R) =====
 // Rotate FS90R servo at a given speed and direction
