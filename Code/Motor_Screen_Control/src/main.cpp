@@ -14,13 +14,14 @@ bool connectWiFi();
 void writeServoMicroseconds(int servoId, int us);
 void GoForward(int servoId, int speed_us, int Time);
 void Stop(int servoId, int Time);
-void rotateServo(int servoId, int degrees, int holdTime);           // Standard servo only
-void servoToDegrees(int servoId, int degrees);                      // Standard servo only
-void rotateServoContinuous(int servoId, int speed, int durationMs); // FS90R continuous servo
-void stopServoContinuous(int servoId);                              // FS90R continuous servo
-void calibrateServo(int servoId, int maxRotationMs);                // FS90R calibration helper
-void smartRotate(int servoId, int value, int durationMs);           // Mixed servo types
-void moveAllToHome();                                               // Home position for all servos
+void rotateServo(int servoId, int degrees, int holdTime);
+void rotateServoSlow(int servoId, int targetDeg, int speedDelayMs, int holdTimeMs); // Standard servo only
+void servoToDegrees(int servoId, int degrees);                                      // Standard servo only
+void rotateServoContinuous(int servoId, int speed, int durationMs);                 // FS90R continuous servo
+void stopServoContinuous(int servoId);                                              // FS90R continuous servo
+void calibrateServo(int servoId, int maxRotationMs);                                // FS90R calibration helper
+void smartRotate(int servoId, int value, int durationMs);                           // Mixed servo types
+void moveAllToHome();                                                               // Home position for all servos
 void updateEveScreen();
 void screenInit();
 bool resetButtonPressed();
@@ -69,15 +70,42 @@ int SorceryCounter = 0;
 int InstantCounter = 0;
 int CreatureCounter = 0;
 int UnknownCounter = 0;
+int Scan_Attempts = 0;
 
 volatile bool resetRequested = false;
-void IRAM_ATTR handleResetInterrupt() {
-    static uint32_t last = 0;
-    uint32_t now = millis();
-    if (now - last > 200) {   // debounce
-        resetRequested = true;
-    }
-    last = now;
+void IRAM_ATTR handleResetInterrupt()
+{
+  static uint32_t last = 0;
+  uint32_t now = millis();
+  if (now - last > 200)
+  { // debounce
+    resetRequested = true;
+  }
+  last = now;
+}
+
+volatile bool ManaShuffle = false;
+void IRAM_ATTR handleManaShuffleInterrupt()
+{
+  static uint32_t last = 0;
+  uint32_t now = millis();
+  if (now - last > 200)
+  { // debounce
+    ManaShuffle = true;
+  }
+  last = now;
+}
+
+volatile bool Sorting = false;
+void IRAM_ATTR handleSortingInterrupt()
+{
+  static uint32_t last = 0;
+  uint32_t now = millis();
+  if (now - last > 200)
+  { // debounce
+    Sorting = true;
+  }
+  last = now;
 }
 
 void setup()
@@ -85,7 +113,12 @@ void setup()
   Serial.begin(115200);
   Serial0.begin(115200, SERIAL_8N1, 44, 43);
   pinMode(15, INPUT_PULLUP);
+  pinMode(16, INPUT_PULLUP);
+  pinMode(17, INPUT_PULLUP);
+  pinMode(18, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(15), handleResetInterrupt, FALLING);
+  attachInterrupt(digitalPinToInterrupt(16), handleManaShuffleInterrupt, FALLING);
+  attachInterrupt(digitalPinToInterrupt(17), handleSortingInterrupt, FALLING);
   delay(2000);
   screenInit();
 
@@ -106,7 +139,8 @@ void setup()
     delay(2000);
     ESP.restart();
   }
-  moveAllToHome(); // Move all servos to their home position at startup
+  rotateServoSlow(0, 0, 5, 1000);
+  rotateServoSlow(1, 90, 5, 1000);
 }
 typedef enum
 {
@@ -129,90 +163,89 @@ typedef enum
 
 void loop()
 {
-
   State_t currentState = STATE_NEUTRAL;
-  Event_t event = EVENT_NONE;
 
   while (true)
   {
-    // getTypeLine();
-    // delay(3000);
     switch (currentState)
     {
     case STATE_NEUTRAL:
-      rotateServo(0, 0, 1000); // Rotate servo 1 to 0° and hold for 1 second
-      rotateServo(1, 85, 1000);
+      rotateServoSlow(0, 0, 50, 1000);
+      rotateServoSlow(1, 90, 50, 1000);
 
       if (resetRequested)
       {
-        resetRequested = false; // clear flag
+        resetRequested = false;
         resetCounters();
         updateEveScreen();
         break;
       }
-      // Prompt for card type at the start
-      Serial.println("\n\n=== ENTER CARD TYPE ===");
-      Serial.println("Valid types: Creature, Instant, Sorcery, Enchantment, Artifact, Planeswalker, Land");
-      Serial.print("Enter card type: ");
 
-      while (Serial.available() == 0)
+      if (ManaShuffle)
       {
-        delay(100);
+        ManaShuffle = false;
+        Serial.println("\n=== Mana Shuffle Initiated ===");
+        break;
       }
-      Type = Serial.readStringUntil('\n');
-      Type.trim();
 
-      normalized = normalizeType(Type);
-      Serial.println("Normalized type: " + normalized);
-      delay(1000);
+      if (Sorting)
+      {
+        Serial.println("\n=== Sorting Initiated ===");
+        rotateServoContinuous(2, LandCounter * 600, 200); // Full forward for 2 seconds
+        writeServoMicroseconds(2, 1500); // Stop servo 2
+        rotateServoContinuous(3, CreatureCounter * 600, 200); // Full forward for 2 seconds
+        writeServoMicroseconds(3, 1500); // Stop servo 3
+        rotateServoContinuous(7, SorceryCounter * 600, 200); // Full forward for 2 seconds
+        writeServoMicroseconds(7, 1500); // Stop servo 7
+        Sorting = false;
+        break;
+      }
+
+      Serial.println("\n=== WAITING FOR CARD ===");
+      getTypeLine(); // fetch from /last-card, sets global `normalized`
+
+      if (normalized == "" || normalized == "Unknown")
+      {
+        Serial.println("No valid card yet, retrying...");
+        Scan_Attempts++;
+        if (Scan_Attempts == 2)
+        {
+          rotateServoSlow(1, 91, 50, 0);
+        }
+        if (Scan_Attempts == 3)
+        {
+          rotateServoSlow(1, 89, 50, 0);
+        }
+        delay(750);
+        break;
+      }
+
+      Serial.println("Got type: " + normalized);
+      Scan_Attempts = 0; // reset attempts on valid read
       if (normalized == "Creature")
-      {
         currentState = STATE_CREATURE;
-        Serial.println("Transitioning to CREATURE state");
-      }
       else if (normalized == "Instant")
-      {
         currentState = STATE_INSTANT;
-        Serial.println("Transitioning to INSTANT state");
-      }
       else if (normalized == "Sorcery")
-      {
         currentState = STATE_SORCERY;
-        Serial.println("Transitioning to SORCERY state");
-      }
       else if (normalized == "Enchantment")
-      {
         currentState = STATE_ENCHANTMENT;
-        Serial.println("Transitioning to ENCHANTMENT state");
-      }
       else if (normalized == "Artifact")
-      {
         currentState = STATE_ARTIFACT;
-        Serial.println("Transitioning to ARTIFACT state");
-      }
-      else if (normalized == "Planeswalker")
-      {
-        currentState = STATE_PLANESWALKER;
-        Serial.println("Transitioning to PLANESWALKER state");
-      }
+      else if (normalized == "Planeswalker" || normalized == "Battle" || normalized == "Kindred")
+      currentState = STATE_PLANESWALKER;
       else if (normalized == "Land")
-      {
         currentState = STATE_LAND;
-        Serial.println("Transitioning to LAND state");
-      }
       else
-      {
         currentState = STATE_UNKNOWN;
-        Serial.println("Transitioning to UNKNOWN state");
-      }
 
       break;
     case STATE_LAND:
       LandCounter++;
       updateEveScreen();
-      rotateServo(0, 135, 1000);
-      rotateServo(1, 40, 1000);
-      rotateServo(1, 85, 1000);
+      rotateServoSlow(0, 135, 50, 1000);
+      rotateServoSlow(1, 40, 50, 1000);
+      rotateServoSlow(1, 90, 50, 1000);
       currentState = STATE_NEUTRAL; // Transition to next state
       Serial.println("LAND SORTED");
       break;
@@ -220,14 +253,17 @@ void loop()
     case STATE_CREATURE:
       CreatureCounter++;
       updateEveScreen();
-      rotateServo(1, 120, 1000);
-      rotateServo(1, 85, 1000);
+      rotateServoSlow(1, 130, 5, 1000);
+      rotateServoSlow(1, 90, 10, 1000);
       currentState = STATE_NEUTRAL; // Transition to next state
       Serial.println("CREATURE SORTED");
       break;
 
     case STATE_ARTIFACT:
       ArtifactCounter++;
+      rotateServoSlow(0, 45, 50, 1000);
+      rotateServoSlow(1, 130, 50, 1000);
+      rotateServoSlow(1, 90, 50, 1000);
       updateEveScreen();
       currentState = STATE_NEUTRAL; // Transition to next state
       Serial.println("ARTIFACT SORTED");
@@ -236,9 +272,9 @@ void loop()
     case STATE_ENCHANTMENT:
       EnchantmentCounter++;
       updateEveScreen();
-      rotateServo(0, 180, 1000);
-      rotateServo(1, 40, 1000);
-      rotateServo(1, 85, 1000);
+      rotateServoSlow(0, 90, 50, 1000);
+      rotateServoSlow(1, 130, 50, 1000);
+      rotateServoSlow(1, 90, 50, 1000);
       currentState = STATE_NEUTRAL; // Transition to next state
       Serial.println("ENCHANTMENT SORTED");
       break;
@@ -246,24 +282,26 @@ void loop()
     case STATE_INSTANT:
       InstantCounter++;
       updateEveScreen();
-      rotateServo(0, 90, 1000);
-      rotateServo(1, 40, 1000);
-      rotateServo(1, 85, 1000);
+      rotateServoSlow(0, 135, 50, 1000);
+      rotateServoSlow(1, 130, 50, 1000);
+      rotateServoSlow(1, 90, 50, 1000);
       currentState = STATE_NEUTRAL; // Transition to next state
       Serial.println("INSTANT SORTED");
       break;
     case STATE_SORCERY:
       SorceryCounter++;
       updateEveScreen();
-      rotateServo(0, 135, 1000);
-      rotateServo(1, 40, 1000);
-      rotateServo(1, 85, 1000);
+      rotateServoSlow(1, 40, 50, 1000);
+      rotateServoSlow(1, 90, 50, 1000);
       currentState = STATE_NEUTRAL; // Transition to next state
       Serial.println("SORCERY SORTED");
       break;
     case STATE_PLANESWALKER:
       OthersCounter++;
       updateEveScreen();
+      rotateServoSlow(0, 45, 50, 1000);
+      rotateServoSlow(1, 40, 50, 1000);
+      rotateServoSlow(1, 90, 50, 1000);
       currentState = STATE_NEUTRAL; // Transition to next state
       Serial.println("PLANESWALKER SORTED");
       break;
@@ -271,20 +309,22 @@ void loop()
     case STATE_UNKNOWN:
       UnknownCounter++;
       updateEveScreen();
+      rotateServoSlow(0, 90, 50, 1000);
+      rotateServoSlow(1, 40, 50, 1000);
+      rotateServoSlow(1, 90, 50, 1000);
       currentState = STATE_NEUTRAL; // Transition to next state
       Serial.println("UNKNOWN SORTED");
       break;
     }
   }
-  // rotateServo(0, 1000);   // Rotate to 0° and hold for 1 second
-  // rotateServo(90, 1000);  // Rotate to 90° and hold for 1 second
-  // rotateServo(180, 1000); // Rotate to 180° and hold for 1 second
 }
 
 void getTypeLine()
 {
+  normalized = ""; // clear before fetch
+
   WiFiClientSecure client;
-  client.setInsecure(); // IMPORTANT for HTTPS on ESP32-S3
+  client.setInsecure();
 
   HTTPClient http;
   http.begin(client, "https://ocr-server-ozql.onrender.com/last-card");
@@ -300,15 +340,31 @@ void getTypeLine()
     if (err)
     {
       Serial.println("JSON parse error");
-      Serial.println(err.c_str());
+      http.end();
       return;
     }
 
     const char *typeLine = doc["card"]["type_line"];
     const char *name = doc["card"]["name"];
 
-    Serial.println(typeLine);
-    Serial.println(name);
+    if (typeLine)
+    {
+      Serial.print("Type line: ");
+      Serial.println(typeLine);
+      Serial.print("Name: ");
+      Serial.println(name ? name : "unknown");
+      normalized = normalizeType(String(typeLine));
+      HTTPClient http2;
+      WiFiClientSecure client2;
+      client2.setInsecure();
+      http2.begin(client2, "https://ocr-server-ozql.onrender.com/clear-card");
+      http2.POST("");
+      http2.end();
+    }
+    else
+    {
+      Serial.println("No type_line in response");
+    }
   }
   else
   {
@@ -323,20 +379,15 @@ String normalizeType(String raw)
 {
   raw.toLowerCase();
 
-  if (raw.indexOf("creature") != -1)
-    return "Creature";
-  if (raw.indexOf("planeswalker") != -1)
-    return "Planeswalker";
-  if (raw.indexOf("instant") != -1)
-    return "Instant";
-  if (raw.indexOf("sorcery") != -1)
-    return "Sorcery";
-  if (raw.indexOf("enchantment") != -1)
-    return "Enchantment";
-  if (raw.indexOf("artifact") != -1)
-    return "Artifact";
-  if (raw.indexOf("land") != -1)
-    return "Land";
+  if (raw.indexOf("creature") != -1)    return "Creature";
+  if (raw.indexOf("planeswalker") != -1) return "Planeswalker";
+  if (raw.indexOf("battle") != -1)      return "Battle";
+  if (raw.indexOf("kindred") != -1)     return "Kindred";
+  if (raw.indexOf("instant") != -1)     return "Instant";
+  if (raw.indexOf("sorcery") != -1)     return "Sorcery";
+  if (raw.indexOf("enchantment") != -1) return "Enchantment";
+  if (raw.indexOf("artifact") != -1)    return "Artifact";
+  if (raw.indexOf("land") != -1)        return "Land";
 
   return "Unknown";
 }
@@ -384,6 +435,12 @@ void writeServoMicroseconds(int servoId, int us)
   // Use 64-bit math to avoid overflow
   uint32_t duty = (uint32_t)((uint64_t)us * maxDuty / (uint64_t)period_us);
   ledcWrite(channel, duty);
+
+  if (servoTypes[servoId] == SERVO_CONTINUOUS && us == 1500)
+  {
+    // Re-send stop pulse to prevent drift
+    ledcWrite(channel, duty);
+  }
 }
 
 void GoForward(int servoId, int speed_us, int Time)
@@ -442,6 +499,32 @@ void rotateServo(int servoId, int degrees, int holdTime)
   // Rotate to specified angle and hold for holdTime milliseconds
   servoToDegrees(servoId, degrees);
   delay(holdTime);
+}
+
+void rotateServoSlow(int servoId, int targetDeg, int speedDelayMs, int holdTimeMs)
+{
+  // Track last known position for each servo
+  static int lastPos[NUM_SERVOS] = {90, 90, 90, 90, 90};
+
+  int current = lastPos[servoId];
+
+  // Determine direction
+  int step = (targetDeg > current) ? 1 : -1;
+
+  // Smooth stepping loop
+  while (current != targetDeg)
+  {
+    current += step;
+    servoToDegrees(servoId, current);
+    delay(speedDelayMs); // <-- controls speed
+  }
+
+  // Save final position
+  lastPos[servoId] = current;
+
+  // Hold at final angle
+  if (holdTimeMs > 0)
+    delay(holdTimeMs);
 }
 
 void moveAllToHome()
