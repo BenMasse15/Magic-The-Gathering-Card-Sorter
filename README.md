@@ -13,6 +13,6 @@ TO DO:
 
 -Monday --> ~~Film working process + Tuning~~
 
--Post Evaluation --> Make Lights PCB + Buttons + Charge
-                     New Motors
+-Post Evaluation --> ~~Make Lights PCB + Buttons + Charge~~
+                     ~~New Motors~~
                      
