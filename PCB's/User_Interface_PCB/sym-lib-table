@@ -1,0 +1,5 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "5GTH93501")(type "KiCad")(uri "${KIPRJMOD}/Library/ul_5GTH93501/KiCADv6/2026-04-22_14-26-37.kicad_sym")(options "")(descr ""))
+  (lib (name "UUP1H0R1MCL1GS")(type "KiCad")(uri "${KIPRJMOD}/Library/UUP1H0R1MCL1GS/KiCADv6/2026-04-22_15-00-23.kicad_sym")(options "")(descr ""))
+)

@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "158301240")(type "KiCad")(uri "${KIPRJMOD}/Library/158301240/WL-SWTP_3014.kicad_sym")(options "")(descr ""))
+)

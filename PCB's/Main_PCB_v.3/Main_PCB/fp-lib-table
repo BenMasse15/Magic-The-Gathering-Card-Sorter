@@ -1,0 +1,10 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "LM1085ISX-3-3-NOPB")(type "KiCad")(uri "C:/tmp/Main_PCB_Folder/ul_LM1085ISX-3-3-NOPB(1)/KiCADv6/footprints.pretty")(options "")(descr ""))
+  (lib (name "62684-402100ALF")(type "KiCad")(uri "C:/tmp/Main_PCB_Folder/62684_402100ALF")(options "")(descr ""))
+  (lib (name "5051102091")(type "KiCad")(uri "C:/tmp/Main_PCB_Folder/5051102091/KiCADv6/footprints.pretty")(options "")(descr ""))
+  (lib (name "L7806ABD2T_TR")(type "KiCad")(uri "C:/tmp/Main_PCB_Folder/L7806ABD2T_TR/KiCADv6/footprints.pretty")(options "")(descr ""))
+  (lib (name "22232021")(type "KiCad")(uri "C:/tmp/Main_PCB_Folder/22232021/KiCADv6/footprints.pretty")(options "")(descr ""))
+  (lib (name "PTS815SJM250SMTRLFS")(type "KiCad")(uri "C:/tmp/Main_PCB_Folder/PTS815_SJM_250_SMTR_LFS/KiCADv6/footprints.pretty")(options "")(descr ""))
+  (lib (name "5001")(type "KiCad")(uri "C:/tmp/Main_PCB_Folder/5001")(options "")(descr ""))
+)
