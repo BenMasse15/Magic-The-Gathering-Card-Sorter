@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <SPI.h>
 #include <EVE.h>
-#include <ESP32Servo.h>
 
 // ===== FORWARD DECLARATIONS =====
 void getTypeLine();
@@ -19,18 +18,20 @@ void resetCounters();
 void drawMenu(int selectedIndex);
 bool runStartMode();
 bool runTestingMode();
+bool runCalibrateMode();
 void processCardType(String type);
 int showMenu();
-void initAllServos();
 bool checkMenuHold();
-void servoStop(int id);
-void servoForward(int id, int speed);
-void servoBackward(int id, int speed);
-void calibrateServo(int id);
-bool runCalibrateMode();
-static void attachExclusive(int id);
-void debugCycleServosOneByOne();
-static void ledcWritePulseUs(int channel, int pulseWidth);
+void writeServoMicroseconds(int servoId, int us);
+void GoForward(int servoId, int speed_us, int Time);
+void Stop(int servoId, int Time);
+void servoToDegrees(int servoId, int degrees);
+void rotateServo(int servoId, int degrees, int holdTime);
+void rotateServoSlow(int servoId, int targetDeg, int speedDelayMs, int holdTimeMs);
+void rotateServoContinuous(int servoId, int speed, int durationMs);
+void stopServoContinuous(int servoId);
+void moveAllToHome();
+void runSortingServo(int servoIdx, int counter);
 
 // ===== SCREEN PINS =====
 #define EVE_SCK 13
@@ -47,14 +48,6 @@ static void ledcWritePulseUs(int channel, int pulseWidth);
 #define BTN_LEFT 18
 
 #define MENU_HOLD_MS 2000 // hold OK for 2s to return to menu
-
-#define NUM_SERVOS 6
-Servo servos[NUM_SERVOS];
-int servoPins[NUM_SERVOS] = {
-    1,2,3,4,12,8};
-
-int stopPulse[NUM_SERVOS] = {
-    1500, 1490, 1490, 1490, 1490, 1490};
 
 // ===== GLOBALS =====
 String Type;
@@ -79,11 +72,10 @@ void IRAM_ATTR handleOKInterrupt()
   uint32_t now = millis();
 
   if (now - last > 50)
-  { // debounce
+  {
     okPressed = true;
     okPressStart = now;
   }
-
   last = now;
 }
 
@@ -99,7 +91,6 @@ void IRAM_ATTR handleUPInterrupt()
     upPressed = true;
     upPressStart = now;
   }
-
   last = now;
 }
 
@@ -111,11 +102,10 @@ void IRAM_ATTR handleDownInterrupt()
   uint32_t now = millis();
 
   if (now - last > 50)
-  { // debounce
+  {
     downPressed = true;
     downPressStart = now;
   }
-
   last = now;
 }
 
@@ -127,11 +117,10 @@ void IRAM_ATTR handleRightInterrupt()
   uint32_t now = millis();
 
   if (now - last > 50)
-  { // debounce
+  {
     rightPressed = true;
     rightPressStart = now;
   }
-
   last = now;
 }
 
@@ -143,11 +132,10 @@ void IRAM_ATTR handleLeftInterrupt()
   uint32_t now = millis();
 
   if (now - last > 50)
-  { // debounce
+  {
     leftPressed = true;
     leftPressStart = now;
   }
-
   last = now;
 }
 
@@ -164,6 +152,32 @@ typedef enum
   STATE_LAND,
   STATE_UNKNOWN
 } State_t;
+
+// ====== Servo Stuff ======
+#define SERVO_STANDARD 0
+#define SERVO_CONTINUOUS 1
+
+const int NUM_SERVOS = 6;
+const int servoPins[NUM_SERVOS] = {1, 2, 3, 4, 5, 6};
+
+// If you want standard vs continuous behavior:
+const int servoTypes[NUM_SERVOS] = {
+    SERVO_STANDARD,   // 0
+    SERVO_CONTINUOUS, // 1
+    SERVO_CONTINUOUS, // 2
+    SERVO_CONTINUOUS, // 3
+    SERVO_CONTINUOUS, // 4
+    SERVO_CONTINUOUS  // 5
+};
+
+// Shared LEDC PWM channel
+const int SHARED_PWM_CHANNEL = 0;
+int currentActiveServo = -1;
+
+// PWM timing
+const int pwmFreq = 50;       // 50 Hz
+const int pwmResolution = 14; // 14-bit
+const int period_us = 1000000 / pwmFreq;
 
 // ===== SETUP =====
 void setup()
@@ -185,13 +199,12 @@ void setup()
 
   delay(2000);
   screenInit();
-  initAllServos();
-  ESP32PWM::allocateTimer(0);
-	ESP32PWM::allocateTimer(1);
-	ESP32PWM::allocateTimer(2);
-	ESP32PWM::allocateTimer(3);
+  ledcSetup(SHARED_PWM_CHANNEL, pwmFreq, pwmResolution);
+  ledcAttachPin(servoPins[0], SHARED_PWM_CHANNEL);
+  ledcWrite(SHARED_PWM_CHANNEL, 0); // or neutral duty
+  ledcDetachPin(servoPins[0]);
+  currentActiveServo = -1;
 
-  // Main program loop — menu re-appears when hold-to-menu triggers
   while (true)
   {
     int mode = showMenu();
@@ -203,24 +216,20 @@ void setup()
         delay(2000);
         ESP.restart();
       }
-      runStartMode(); // returns true when hold-to-menu triggered
+      runStartMode();
     }
     else if (mode == 1)
     {
-      runTestingMode(); // returns true when hold-to-menu triggered
+      runTestingMode();
     }
     else if (mode == 2)
     {
       runCalibrateMode();
     }
-    // Falls back to top of while(true) → showMenu() again
   }
 }
 
-void loop()
-{
-  // Intentionally empty
-}
+void loop() {}
 
 // ===== FUNCTIONS =====
 
@@ -252,6 +261,7 @@ void getTypeLine()
       Serial.print("Name: ");
       Serial.println(name ? name : "unknown");
       normalized = normalizeType(String(typeLine));
+
       WiFiClientSecure client2;
       client2.setInsecure();
       HTTPClient http2;
@@ -323,6 +333,7 @@ void updateEveScreen()
   EVE_cmd_dl(DL_CLEAR | CLR_COL | CLR_STN | CLR_TAG);
   EVE_color_rgb(0x000000);
   EVE_cmd_text(EVE_HSIZE / 2, 20, 30, EVE_OPT_CENTER, "MTG SORT COUNTS");
+
   char buffer[64];
   sprintf(buffer, "Creatures: %d", CreatureCounter);
   EVE_cmd_text(30, 60, 22, 0, buffer);
@@ -340,6 +351,7 @@ void updateEveScreen()
   EVE_cmd_text(30, 240, 22, 0, buffer);
   sprintf(buffer, "Unknown: %d", UnknownCounter);
   EVE_cmd_text(30, 270, 22, 0, buffer);
+
   EVE_cmd_dl(DL_DISPLAY);
   EVE_cmd_dl(CMD_SWAP);
 }
@@ -350,12 +362,14 @@ void screenInit()
   digitalWrite(EVE_CS, HIGH);
   pinMode(EVE_PDN, OUTPUT);
   digitalWrite(EVE_PDN, LOW);
+
 #if defined(ESP32)
   SPI.begin(EVE_SCK, EVE_MISO, EVE_MOSI);
 #else
   SPI.begin();
   SPI.beginTransaction(SPISettings(8UL * 1000000UL, MSBFIRST, SPI_MODE0));
 #endif
+
   if (E_OK == EVE_init())
   {
     EVE_cmd_dl(CMD_DLSTART);
@@ -376,19 +390,14 @@ void resetCounters()
   updateEveScreen();
 }
 
-// Returns true if the user wants to go back to menu
 bool runStartMode()
 {
   State_t currentState = STATE_NEUTRAL;
 
   while (true)
   {
-
-    // Check for hold-to-menu on BTN_OK at neutral state
     if (currentState == STATE_NEUTRAL && checkMenuHold())
-    {
-      return true; // back to menu
-    }
+      return true;
 
     switch (currentState)
     {
@@ -461,65 +470,164 @@ bool runStartMode()
   }
 }
 
-// ===== TESTING MODE (stub) =====
-// Returns true when user wants to go back to menu
 bool runTestingMode()
 {
-  // Draw a placeholder screen
-  EVE_cmd_dl(CMD_DLSTART);
-  EVE_cmd_dl(DL_CLEAR_COLOR_RGB | 0xffffff);
-  EVE_cmd_dl(DL_CLEAR | CLR_COL | CLR_STN | CLR_TAG);
-  EVE_color_rgb(0x000000);
-  EVE_cmd_text(EVE_HSIZE / 2, EVE_VSIZE / 2 - 20, 27, EVE_OPT_CENTER, "TESTING MODE");
-  EVE_cmd_text(EVE_HSIZE / 2, EVE_VSIZE / 2 + 20, 22, EVE_OPT_CENTER, "Hold OK 2s for menu");
-  EVE_cmd_dl(DL_DISPLAY);
-  EVE_cmd_dl(CMD_SWAP);
+  updateEveScreen();
+  Serial.println("=== ENTERING TESTING MODE (manual input) ===");
+  Serial.println("Type a card type and press Enter:");
+  Serial.println("Valid: creature, instant, sorcery, enchantment, artifact, land, planeswalker, battle, kindred");
+  Serial.println("Type 'reset' to reset counters.");
+  Serial.println("Hold OK 2s to exit.");
+
+  State_t currentState = STATE_NEUTRAL;
 
   while (true)
   {
-    if (digitalRead(BTN_OK) == LOW)
+    // Allow exit back to menu
+    if (currentState == STATE_NEUTRAL && checkMenuHold())
+      return true;
+
+    switch (currentState)
     {
-      ledcWritePulseUs(0, 1410);
-      delay(100);
-      ledcWritePulseUs(0, 1510);
-      delay(100);
-      ledcWritePulseUs(0, 1610);
-      delay(100);
-      servoForward(1, 100);
-      delay(500);
-      servoStop(1);
-      servoForward(2, 100);
-      delay(500);
-      servoStop(2);
-      servoForward(3, 100);
-      delay(500);
-      servoStop(3);
-      servoForward(4, 100);
-      delay(500);
-      servoStop(4);
-      servoForward(5, 100);
-      delay(500);
-      servoStop(5);
-    }
-    if (digitalRead(BTN_DOWN) == LOW)
+    case STATE_NEUTRAL:
     {
-      One_Card_Delay -= 1;
-      Serial.print("One_Card_Delay: ");
-      Serial.println(One_Card_Delay);
-      delay(200);
-    }
-    if (digitalRead(BTN_UP) == LOW)
-    {
-      One_Card_Delay += 1;
-      Serial.print("One_Card_Delay: ");
-      Serial.println(One_Card_Delay);
-      delay(200);
+      Serial.println("\n=== TESTING: WAITING FOR INPUT ===");
+      servoToDegrees(0, 100); 
+      Serial.print("Enter card type: ");
+
+      // ---- Manual input ----
+      String input = "";
+      while (true)
+      {
+        if (Serial.available())
+        {
+          char c = Serial.read();
+          if (c == '\n' || c == '\r')
+          {
+            if (input.length() > 0)
+              break;
+          }
+          else
+          {
+            input += c;
+          }
+        }
+
+        if (checkMenuHold())
+          return true;
+      }
+
+      input.trim();
+      Serial.println(input);
+
+      if (input.equalsIgnoreCase("reset"))
+      {
+        resetCounters();
+        updateEveScreen();
+        break;
+      }
+
+      normalized = normalizeType(input);
+
+      if (normalized == "" || normalized == "Unknown")
+      {
+        Serial.println("TESTING: Unrecognized type, try again.");
+        break;
+      }
+
+      Serial.println("TESTING: Got type: " + normalized);
+
+      if (normalized == "Creature")
+        currentState = STATE_CREATURE;
+      else if (normalized == "Instant")
+        currentState = STATE_INSTANT;
+      else if (normalized == "Sorcery")
+        currentState = STATE_SORCERY;
+      else if (normalized == "Enchantment")
+        currentState = STATE_ENCHANTMENT;
+      else if (normalized == "Artifact")
+        currentState = STATE_ARTIFACT;
+      else if (normalized == "Planeswalker" || normalized == "Battle" || normalized == "Kindred")
+        currentState = STATE_PLANESWALKER;
+      else if (normalized == "Land")
+        currentState = STATE_LAND;
+      else
+        currentState = STATE_UNKNOWN;
+
+      break;
     }
 
-    if (checkMenuHold())
-      return true; // back to menu
+    case STATE_LAND:
+      GoForward(4, 1600, 770);
+      Stop(4, 1);
+      delay(100);
+      servoToDegrees(0, 120); 
+      delay(100);
+      servoToDegrees(0, 110);
+      delay(100);
+      servoToDegrees(0, 120); 
+      delay(400);
+      Serial.println("TESTING: LAND SORTED");
+      processCardType("Land");
+      updateEveScreen();
+      GoForward(4, 1370, 770);
+      Stop(4, 1);
+      currentState = STATE_NEUTRAL;
+      break;
+
+    case STATE_CREATURE:
+      Serial.println("TESTING: CREATURE SORTED");
+      processCardType("Creature");
+      updateEveScreen();
+      currentState = STATE_NEUTRAL;
+      break;
+
+    case STATE_ARTIFACT:
+      Serial.println("TESTING: ARTIFACT SORTED");
+      processCardType("Artifact");
+      updateEveScreen();
+      currentState = STATE_NEUTRAL;
+      break;
+
+    case STATE_ENCHANTMENT:
+      Serial.println("TESTING: ENCHANTMENT SORTED");
+      processCardType("Enchantment");
+      updateEveScreen();
+      currentState = STATE_NEUTRAL;
+      break;
+
+    case STATE_INSTANT:
+      Serial.println("TESTING: INSTANT SORTED");
+      processCardType("Instant");
+      updateEveScreen();
+      currentState = STATE_NEUTRAL;
+      break;
+
+    case STATE_SORCERY:
+      Serial.println("TESTING: SORCERY SORTED");
+      processCardType("Sorcery");
+      updateEveScreen();
+      currentState = STATE_NEUTRAL;
+      break;
+
+    case STATE_PLANESWALKER:
+      Serial.println("TESTING: PLANESWALKER SORTED");
+      processCardType("Planeswalker");
+      updateEveScreen();
+      currentState = STATE_NEUTRAL;
+      break;
+
+    case STATE_UNKNOWN:
+      Serial.println("TESTING: UNKNOWN SORTED");
+      processCardType("Unknown");
+      updateEveScreen();
+      currentState = STATE_NEUTRAL;
+      break;
+    }
   }
 }
+
+
 
 bool runCalibrateMode()
 {
@@ -534,43 +642,61 @@ bool runCalibrateMode()
 
   while (true)
   {
+    if (digitalRead(BTN_LEFT) == LOW)
+    {
+      Serial.println("LEFT");
+      GoForward(5, 1550, 5);
+      Stop(1, 1);
+    }
 
+    if (digitalRead(BTN_RIGHT) == LOW)
+    {
+      Serial.println("RIGHT");
+      GoForward(5, 1450, 5);
+      Stop(1, 1);
+    }
+
+    if (digitalRead(BTN_UP) == LOW)
+    {
+      Serial.println("UP");
+      GoForward(4, 1550, 10);
+      Stop(1, 1);
+    }
+
+    if (digitalRead(BTN_DOWN) == LOW)
+    {
+      Serial.println("DOWN");
+      GoForward(4, 1450, 10);
+      Stop(1, 1);
+    }
     if (checkMenuHold())
       return true;
   }
 }
 
-// ===== HOLD-TO-MENU HELPER =====
-// Returns true if BTN_OK held for MENU_HOLD_MS — call this inside mode loops
 bool checkMenuHold()
 {
   if (!okPressed)
     return false;
 
-  // Button is still held?
   if (digitalRead(BTN_OK) == LOW)
   {
     if (millis() - okPressStart >= MENU_HOLD_MS)
     {
       okPressed = false;
-      return true; // held long enough → return to menu
+      return true;
     }
   }
   else
   {
-    // Button was released before 2 seconds
     okPressed = false;
   }
 
   return false;
 }
 
-// ===== MENU =====
 int showMenu()
 {
-  // Grid layout:
-  // [0] Start     [1] Testing
-  // [2] Calibrate [3] (future)
   const int COLS = 2;
   const int ROWS = 2;
   int selected = 0;
@@ -617,7 +743,7 @@ int showMenu()
     if (digitalRead(BTN_OK) == LOW)
     {
       delay(200);
-      return selected; // 0=Start, 1=Testing, 2=Calibrate, 3=future
+      return selected;
     }
   }
 }
@@ -699,7 +825,6 @@ void drawMenu(int selectedIndex)
   EVE_cmd_dl(CMD_SWAP);
 }
 
-// ===== SHARED CARD PROCESSING =====
 void processCardType(String type)
 {
   if (type == "Creature")
@@ -745,89 +870,129 @@ void processCardType(String type)
   updateEveScreen();
 }
 
-void initAllServos()
+void writeServoMicroseconds(int servoId, int us)
+{
+  if (servoId < 0 || servoId >= NUM_SERVOS)
+    return;
+
+  // Reattach only if needed
+  if (currentActiveServo != servoId)
+  {
+    if (currentActiveServo >= 0)
+      ledcDetachPin(servoPins[currentActiveServo]);
+
+    ledcAttachPin(servoPins[servoId], SHARED_PWM_CHANNEL);
+    currentActiveServo = servoId;
+  }
+
+  uint32_t maxDuty = (1UL << pwmResolution) - 1UL;
+  uint32_t duty = (uint32_t)((uint64_t)us * maxDuty / (uint64_t)period_us);
+  ledcWrite(SHARED_PWM_CHANNEL, duty);
+}
+
+// ===== BASIC MOVEMENT =====
+void GoForward(int servoId, int speed_us, int Time)
+{
+  writeServoMicroseconds(servoId, speed_us);
+  delay(Time);
+}
+
+void Stop(int servoId, int Time)
+{
+  writeServoMicroseconds(servoId, 1500);
+  delay(Time);
+}
+
+// ===== STANDARD SERVO POSITIONING =====
+void servoToDegrees(int servoId, int degrees)
+{
+  if (servoId < 0 || servoId >= NUM_SERVOS)
+    return;
+  int us = 500 + (degrees * 2000) / 180;
+  writeServoMicroseconds(servoId, us);
+}
+
+void rotateServo(int servoId, int degrees, int holdTime)
+{
+  servoToDegrees(servoId, degrees);
+  delay(holdTime);
+}
+
+void rotateServoSlow(int servoId, int targetDeg, int speedDelayMs, int holdTimeMs)
+{
+  static int lastPos[NUM_SERVOS] = {90, 90, 90, 90, 90, 90};
+  int current = lastPos[servoId];
+  int step = (targetDeg > current) ? 1 : -1;
+
+  while (current != targetDeg)
+  {
+    current += step;
+    servoToDegrees(servoId, current);
+    delay(speedDelayMs);
+  }
+
+  lastPos[servoId] = current;
+  if (holdTimeMs > 0)
+    delay(holdTimeMs);
+}
+
+// ===== CONTINUOUS SERVO CONTROL =====
+void rotateServoContinuous(int servoId, int speed, int durationMs)
+{
+  if (servoId < 0 || servoId >= NUM_SERVOS)
+    return;
+
+  speed = constrain(speed, -255, 255);
+  int us = 1500 + (speed * 500) / 255;
+
+  writeServoMicroseconds(servoId, us);
+  delay(durationMs);
+}
+
+void stopServoContinuous(int servoId)
+{
+  writeServoMicroseconds(servoId, 1500);
+}
+
+// ===== HOME POSITION =====
+void moveAllToHome()
 {
   for (int i = 0; i < NUM_SERVOS; i++)
   {
-    servos[i].attach(servoPins[i], 500, 2500);
-    servos[i].writeMicroseconds(stopPulse[i]);
-    delay(20);
-  }
-  // detach all so no servo stays attached by default
-  for (int i = 0; i < NUM_SERVOS; i++)
-  {
-    if (servos[i].attached())
-      servos[i].detach();
+    if (servoTypes[i] == SERVO_STANDARD)
+      rotateServo(i, 90, 0);
+    else
+      stopServoContinuous(i);
   }
 }
 
-// LEDC config: one channel per servo (0..5)
-const int LEDC_FREQ = 50;            // 50 Hz period (20 ms)
-const int LEDC_RES = 16;            // 16-bit resolution
-const int LEDC_MAX = (1 << LEDC_RES) - 1;
-int ledcChannel[NUM_SERVOS] = {0, 1, 2, 3, 4, 5};
-
-static void ledcInitChannels()
+// ===== SORTING SERVO (OPTIONAL) =====
+void runSortingServo(int servoIdx, int counter)
 {
-  for (int i = 0; i < NUM_SERVOS; ++i)
-  {
-    ledcSetup(ledcChannel[i], LEDC_FREQ, LEDC_RES);
-    // do NOT attach pins here; attachExclusive will attach when needed
-  }
-}
+  if (counter <= 0)
+    return;
 
-static void attachExclusiveLEDC(int id)
-{
-  if (id < 0 || id >= NUM_SERVOS) return;
-  // detach others
-  for (int i = 0; i < NUM_SERVOS; ++i)
-  {
-    if (i == id) continue;
-    ledcDetachPin(servoPins[i]);
-  }
-  // attach requested
-  ledcAttachPin(servoPins[id], ledcChannel[id]);
-  Serial.printf("LEDC: attached servo %d to pin %d ch %d\n", id, servoPins[id], ledcChannel[id]);
-}
+  uint32_t maxDuty = (1UL << pwmResolution) - 1UL;
+  uint32_t duty_run = (uint32_t)((uint64_t)1700 * maxDuty / (uint64_t)period_us);
+  uint32_t duty_stop = (uint32_t)((uint64_t)1500 * maxDuty / (uint64_t)period_us);
 
-// write a raw pulse (microseconds) via LEDC on attached channel
-static void ledcWritePulseUs(int id, int pulseUs)
-{
-  if (id < 0 || id >= NUM_SERVOS) return;
-  int periodUs = 1000000 / LEDC_FREQ; // 20,000 us
-  uint32_t duty = (uint32_t)pulseUs * LEDC_MAX / periodUs;
-  ledcWrite(ledcChannel[id], duty);
-  Serial.printf("LEDC: id=%d pin=%d pulse=%d duty=%u\n", id, servoPins[id], pulseUs, duty);
-}
+  // Detach previous
+  if (currentActiveServo >= 0)
+    ledcDetachPin(servoPins[currentActiveServo]);
 
-void servoForward(int id, int speed)
-{
-  if (id < 0 || id >= NUM_SERVOS) return;
-  attachExclusiveLEDC(id);
-  speed = constrain(speed, 0, 100);
-  int pulse = stopPulse[id] + map(speed, 0, 100, 0, 400);
-  ledcWritePulseUs(id, pulse);
-}
+  // Attach new
+  ledcAttachPin(servoPins[servoIdx], SHARED_PWM_CHANNEL);
+  currentActiveServo = servoIdx;
 
-void servoBackward(int id, int speed)
-{
-  if (id < 0 || id >= NUM_SERVOS) return;
-  attachExclusiveLEDC(id);
-  speed = constrain(speed, 0, 100);
-  int pulse = stopPulse[id] - map(speed, 0, 100, 0, 400);
-  ledcWritePulseUs(id, pulse);
-}
+  // Run
+  ledcWrite(SHARED_PWM_CHANNEL, duty_run);
+  delay(counter * 600);
 
-void servoStop(int id)
-{
-  if (id < 0 || id >= NUM_SERVOS) return;
-  // attach so neutral pulse is output, then detach
-  attachExclusiveLEDC(id);
-  ledcWritePulseUs(id, stopPulse[id]);
-  delay(30); // allow a few pulses
-  ledcDetachPin(servoPins[id]);
-  Serial.printf("LEDC: detached servo %d pin %d\n", id, servoPins[id]);
-}
+  // Stop
+  ledcWrite(SHARED_PWM_CHANNEL, duty_stop);
+  delay(200);
 
-// call once from setup() after initAllServos()
-/* ledcInitChannels(); */
+  // Detach
+  ledcDetachPin(servoPins[servoIdx]);
+  currentActiveServo = -1;
+}

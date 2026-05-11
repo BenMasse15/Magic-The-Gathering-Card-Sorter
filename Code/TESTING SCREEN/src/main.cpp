@@ -35,18 +35,15 @@ String normalized;
 // Index: 0    1    2    3    4    5    6    7    8
 // GPIO:  1    2    3    4    5    6    7    8    9
 // Role: std  std  Land Crt  Art  Ench Inst Sorc PW/Other
-const int NUM_SERVOS = 9;
-const int servoPins[NUM_SERVOS] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+const int NUM_SERVOS = 6;
+const int servoPins[NUM_SERVOS] = {1, 2, 3, 4, 5, 6};
 const int servoTypes[NUM_SERVOS] = {
     SERVO_STANDARD,   // 0 - GPIO 1
-    SERVO_STANDARD,   // 1 - GPIO 2
-    SERVO_CONTINUOUS, // 2 - GPIO 3 - Land
-    SERVO_CONTINUOUS, // 3 - GPIO 4 - Creature
-    SERVO_CONTINUOUS, // 4 - GPIO 5 - Artifact
-    SERVO_CONTINUOUS, // 5 - GPIO 6 - Enchantment
-    SERVO_CONTINUOUS, // 6 - GPIO 7 - Instant
-    SERVO_CONTINUOUS, // 7 - GPIO 8 - Sorcery
-    SERVO_CONTINUOUS  // 8 - GPIO 9 - Planeswalker/Other
+    SERVO_CONTINUOUS, // 1 - GPIO 2
+    SERVO_CONTINUOUS, // 2 - GPIO 3
+    SERVO_CONTINUOUS, // 3 - GPIO 4
+    SERVO_CONTINUOUS, // 4 - GPIO 5
+    SERVO_CONTINUOUS, // 5 - GPIO 6
 };
 
 const int SHARED_PWM_CHANNEL = 0;
@@ -472,7 +469,7 @@ void rotateServo(int servoId, int degrees, int holdTime)
 
 void rotateServoSlow(int servoId, int targetDeg, int speedDelayMs, int holdTimeMs)
 {
-    static int lastPos[NUM_SERVOS] = {90, 90, 90, 90, 90, 90, 90, 90, 90};
+    static int lastPos[NUM_SERVOS] = {90, 90, 90, 90, 90, 90};
     int current = lastPos[servoId];
     int step = (targetDeg > current) ? 1 : -1;
     while (current != targetDeg)
