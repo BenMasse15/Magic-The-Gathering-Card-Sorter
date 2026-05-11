@@ -28,6 +28,10 @@ void servoForward(int id, int speed);
 void servoBackward(int id, int speed);
 void calibrateServo(int id);
 bool runCalibrateMode();
+static void attachExclusive(int id);
+void debugCycleServosOneByOne();
+static void ledcWritePulseUs(int channel, int pulseWidth);
+
 // ===== SCREEN PINS =====
 #define EVE_SCK 13
 #define EVE_MISO 14
@@ -47,7 +51,7 @@ bool runCalibrateMode();
 #define NUM_SERVOS 6
 Servo servos[NUM_SERVOS];
 int servoPins[NUM_SERVOS] = {
-    1, 6, 5, 7, 3, 2};
+    1,2,3,4,12,8};
 
 int stopPulse[NUM_SERVOS] = {
     1500, 1490, 1490, 1490, 1490, 1490};
@@ -182,6 +186,11 @@ void setup()
   delay(2000);
   screenInit();
   initAllServos();
+  ESP32PWM::allocateTimer(0);
+	ESP32PWM::allocateTimer(1);
+	ESP32PWM::allocateTimer(2);
+	ESP32PWM::allocateTimer(3);
+
   // Main program loop — menu re-appears when hold-to-menu triggers
   while (true)
   {
@@ -367,15 +376,6 @@ void resetCounters()
   updateEveScreen();
 }
 
-void initAllServos()
-{
-  for (int i = 0; i < NUM_SERVOS; i++)
-  {
-    servos[i].attach(servoPins[i], 500, 2500);
-    servos[i].writeMicroseconds(stopPulse[i]);
-  }
-}
-
 // Returns true if the user wants to go back to menu
 bool runStartMode()
 {
@@ -479,22 +479,26 @@ bool runTestingMode()
   {
     if (digitalRead(BTN_OK) == LOW)
     {
-      servos[0].writeMicroseconds(1410);
-      servos[0].writeMicroseconds(1610);
+      ledcWritePulseUs(0, 1410);
       delay(100);
-      servos[0].writeMicroseconds(1510);
+      ledcWritePulseUs(0, 1510);
       delay(100);
-      servos[0].writeMicroseconds(1610);
+      ledcWritePulseUs(0, 1610);
+      delay(100);
       servoForward(1, 100);
-      servoForward(2, 100);
-      servoForward(3, 100);
-      servoForward(4, 100);
-      servoForward(5, 100);
-      delay(One_Card_Delay);
+      delay(500);
       servoStop(1);
+      servoForward(2, 100);
+      delay(500);
       servoStop(2);
+      servoForward(3, 100);
+      delay(500);
       servoStop(3);
+      servoForward(4, 100);
+      delay(500);
       servoStop(4);
+      servoForward(5, 100);
+      delay(500);
       servoStop(5);
     }
     if (digitalRead(BTN_DOWN) == LOW)
@@ -530,56 +534,6 @@ bool runCalibrateMode()
 
   while (true)
   {
-    if (digitalRead(BTN_OK) == LOW)
-    {
-      servoForward(1, 100);
-      servoForward(2, 100);
-      servoForward(3, 100);
-      servoForward(4, 100);
-      servoForward(5, 100);
-      delay(One_Card_Delay);
-      servoStop(1);
-      servoStop(2);
-      servoStop(3);
-      servoStop(4);
-      servoStop(5);
-      delay(500);
-    }
-    else if (digitalRead(BTN_DOWN) == LOW)
-    {
-      servoForward(1, 100);
-      //servoForward(2, 100);
-      //servoForward(3, 100);
-      //servoForward(4, 100);
-      //servoForward(5, 100);
-      delay(One_Card_Delay);
-      servoStop(1);
-      //servoStop(2);
-      //servoStop(3);
-      //servoStop(4);
-      //servoStop(5);
-      delay(500);
-    }
-    else if (digitalRead(BTN_UP) == LOW)
-    {
-      Serial.println("UP pressed");
-      servoBackward(4, 100);
-      delay(100);
-    }
-    else if (leftPressed)
-    {
-      leftPressed = false;
-      Serial.println("LEFT interrupt fired");
-      servoBackward(5, 100);
-      delay(100);
-    }
-    else if (rightPressed)
-    {
-      rightPressed = false;
-      Serial.println("RIGHT interrupt fired");
-      servoForward(5, 100);
-      delay(100);
-    }
 
     if (checkMenuHold())
       return true;
@@ -791,41 +745,89 @@ void processCardType(String type)
   updateEveScreen();
 }
 
-void servoStop(int id)
+void initAllServos()
 {
-  servos[id].writeMicroseconds(stopPulse[id]);
+  for (int i = 0; i < NUM_SERVOS; i++)
+  {
+    servos[i].attach(servoPins[i], 500, 2500);
+    servos[i].writeMicroseconds(stopPulse[i]);
+    delay(20);
+  }
+  // detach all so no servo stays attached by default
+  for (int i = 0; i < NUM_SERVOS; i++)
+  {
+    if (servos[i].attached())
+      servos[i].detach();
+  }
+}
+
+// LEDC config: one channel per servo (0..5)
+const int LEDC_FREQ = 50;            // 50 Hz period (20 ms)
+const int LEDC_RES = 16;            // 16-bit resolution
+const int LEDC_MAX = (1 << LEDC_RES) - 1;
+int ledcChannel[NUM_SERVOS] = {0, 1, 2, 3, 4, 5};
+
+static void ledcInitChannels()
+{
+  for (int i = 0; i < NUM_SERVOS; ++i)
+  {
+    ledcSetup(ledcChannel[i], LEDC_FREQ, LEDC_RES);
+    // do NOT attach pins here; attachExclusive will attach when needed
+  }
+}
+
+static void attachExclusiveLEDC(int id)
+{
+  if (id < 0 || id >= NUM_SERVOS) return;
+  // detach others
+  for (int i = 0; i < NUM_SERVOS; ++i)
+  {
+    if (i == id) continue;
+    ledcDetachPin(servoPins[i]);
+  }
+  // attach requested
+  ledcAttachPin(servoPins[id], ledcChannel[id]);
+  Serial.printf("LEDC: attached servo %d to pin %d ch %d\n", id, servoPins[id], ledcChannel[id]);
+}
+
+// write a raw pulse (microseconds) via LEDC on attached channel
+static void ledcWritePulseUs(int id, int pulseUs)
+{
+  if (id < 0 || id >= NUM_SERVOS) return;
+  int periodUs = 1000000 / LEDC_FREQ; // 20,000 us
+  uint32_t duty = (uint32_t)pulseUs * LEDC_MAX / periodUs;
+  ledcWrite(ledcChannel[id], duty);
+  Serial.printf("LEDC: id=%d pin=%d pulse=%d duty=%u\n", id, servoPins[id], pulseUs, duty);
 }
 
 void servoForward(int id, int speed)
 {
+  if (id < 0 || id >= NUM_SERVOS) return;
+  attachExclusiveLEDC(id);
   speed = constrain(speed, 0, 100);
   int pulse = stopPulse[id] + map(speed, 0, 100, 0, 400);
-  servos[id].writeMicroseconds(pulse);
+  ledcWritePulseUs(id, pulse);
 }
 
 void servoBackward(int id, int speed)
 {
+  if (id < 0 || id >= NUM_SERVOS) return;
+  attachExclusiveLEDC(id);
   speed = constrain(speed, 0, 100);
   int pulse = stopPulse[id] - map(speed, 0, 100, 0, 400);
-  servos[id].writeMicroseconds(pulse);
+  ledcWritePulseUs(id, pulse);
 }
 
-void calibrateServo(int id)
+void servoStop(int id)
 {
-  Serial.println();
-  Serial.printf("=== Calibrating Servo %d ===\n", id);
-  Serial.println("Watch the servo and find the pulse where it stops moving.");
-  Serial.println("Use that value as stopPulse[id].");
-  Serial.println("----------------------------------------");
-
-  for (int us = 1450; us <= 1550; us += 5)
-  {
-    servos[id].writeMicroseconds(us);
-    Serial.printf("Pulse: %d µs\n", us);
-    delay(1500);
-  }
-
-  servos[id].writeMicroseconds(stopPulse[id]); // return to neutral
-  Serial.println("Calibration sweep complete.");
-  Serial.println("----------------------------------------");
+  if (id < 0 || id >= NUM_SERVOS) return;
+  // attach so neutral pulse is output, then detach
+  attachExclusiveLEDC(id);
+  ledcWritePulseUs(id, stopPulse[id]);
+  delay(30); // allow a few pulses
+  ledcDetachPin(servoPins[id]);
+  Serial.printf("LEDC: detached servo %d pin %d\n", id, servoPins[id]);
 }
+
+// call once from setup() after initAllServos()
+/* ledcInitChannels(); */
