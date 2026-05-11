@@ -392,8 +392,9 @@ void resetCounters()
 
 bool runStartMode()
 {
+  updateEveScreen();
   State_t currentState = STATE_NEUTRAL;
-
+  servoToDegrees(0, 100);
   while (true)
   {
     if (currentState == STATE_NEUTRAL && checkMenuHold())
@@ -435,7 +436,20 @@ bool runStartMode()
       break;
 
     case STATE_LAND:
+      GoForward(4, 1600, 770);
+      Stop(4, 1);
+      delay(100);
+      servoToDegrees(0, 122);
+      delay(100);
+      servoToDegrees(0, 110);
+      delay(100);
+      servoToDegrees(0, 120);
+      delay(500);
+      Serial.println("LAND SORTED");
       processCardType("Land");
+      updateEveScreen();
+      GoForward(4, 1370, 770);
+      Stop(4, 1);
       currentState = STATE_NEUTRAL;
       break;
     case STATE_CREATURE:
@@ -492,7 +506,7 @@ bool runTestingMode()
     case STATE_NEUTRAL:
     {
       Serial.println("\n=== TESTING: WAITING FOR INPUT ===");
-      servoToDegrees(0, 100); 
+      servoToDegrees(0, 100);
       Serial.print("Enter card type: ");
 
       // ---- Manual input ----
@@ -561,12 +575,12 @@ bool runTestingMode()
       GoForward(4, 1600, 770);
       Stop(4, 1);
       delay(100);
-      servoToDegrees(0, 120); 
+      servoToDegrees(0, 122);
       delay(100);
       servoToDegrees(0, 110);
       delay(100);
-      servoToDegrees(0, 120); 
-      delay(400);
+      servoToDegrees(0, 120);
+      delay(500);
       Serial.println("TESTING: LAND SORTED");
       processCardType("Land");
       updateEveScreen();
@@ -626,8 +640,6 @@ bool runTestingMode()
     }
   }
 }
-
-
 
 bool runCalibrateMode()
 {
