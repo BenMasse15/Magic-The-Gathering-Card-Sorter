@@ -658,28 +658,28 @@ bool runCalibrateMode()
     {
       Serial.println("LEFT");
       GoForward(5, 1550, 5);
-      Stop(1, 1);
+      Stop(5, 1);
     }
 
     if (digitalRead(BTN_RIGHT) == LOW)
     {
       Serial.println("RIGHT");
       GoForward(5, 1450, 5);
-      Stop(1, 1);
+      Stop(5, 1);
     }
 
     if (digitalRead(BTN_UP) == LOW)
     {
       Serial.println("UP");
       GoForward(4, 1550, 10);
-      Stop(1, 1);
+      Stop(4, 1);
     }
 
     if (digitalRead(BTN_DOWN) == LOW)
     {
       Serial.println("DOWN");
       GoForward(4, 1450, 10);
-      Stop(1, 1);
+      Stop(4, 1);
     }
     if (checkMenuHold())
       return true;
