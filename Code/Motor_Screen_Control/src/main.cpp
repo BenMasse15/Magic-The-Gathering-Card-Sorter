@@ -27,7 +27,7 @@ void servoStop(int id);
 void servoForward(int id, int speed);
 void servoBackward(int id, int speed);
 void calibrateServo(int id);
-
+bool runCalibrateMode();
 // ===== SCREEN PINS =====
 #define EVE_SCK 13
 #define EVE_MISO 14
@@ -47,7 +47,7 @@ void calibrateServo(int id);
 #define NUM_SERVOS 6
 Servo servos[NUM_SERVOS];
 int servoPins[NUM_SERVOS] = {
-    1, 6, 5, 7, 9, 10};
+    1, 6, 5, 7, 3, 2};
 
 int stopPulse[NUM_SERVOS] = {
     1500, 1490, 1490, 1490, 1490, 1490};
@@ -66,41 +66,6 @@ int CreatureCounter = 0;
 int UnknownCounter = 0;
 int Scan_Attempts = 0;
 int One_Card_Delay = 1600;
-volatile bool resetRequested = false;
-void IRAM_ATTR handleResetInterrupt()
-{
-  static uint32_t last = 0;
-  uint32_t now = millis();
-  if (now - last > 200)
-  {
-    resetRequested = true;
-  }
-  last = now;
-}
-
-volatile bool ManaShuffle = false;
-void IRAM_ATTR handleManaShuffleInterrupt()
-{
-  static uint32_t last = 0;
-  uint32_t now = millis();
-  if (now - last > 200)
-  {
-    ManaShuffle = true;
-  }
-  last = now;
-}
-
-volatile bool Sorting = false;
-void IRAM_ATTR handleSortingInterrupt()
-{
-  static uint32_t last = 0;
-  uint32_t now = millis();
-  if (now - last > 200)
-  {
-    Sorting = true;
-  }
-  last = now;
-}
 
 volatile bool okPressed = false;
 volatile uint32_t okPressStart = 0;
@@ -113,6 +78,70 @@ void IRAM_ATTR handleOKInterrupt()
   { // debounce
     okPressed = true;
     okPressStart = now;
+  }
+
+  last = now;
+}
+
+volatile bool upPressed = false;
+volatile uint32_t upPressStart = 0;
+void IRAM_ATTR handleUPInterrupt()
+{
+  static uint32_t last = 0;
+  uint32_t now = millis();
+
+  if (now - last > 50)
+  {
+    upPressed = true;
+    upPressStart = now;
+  }
+
+  last = now;
+}
+
+volatile bool downPressed = false;
+volatile uint32_t downPressStart = 0;
+void IRAM_ATTR handleDownInterrupt()
+{
+  static uint32_t last = 0;
+  uint32_t now = millis();
+
+  if (now - last > 50)
+  { // debounce
+    downPressed = true;
+    downPressStart = now;
+  }
+
+  last = now;
+}
+
+volatile bool rightPressed = false;
+volatile uint32_t rightPressStart = 0;
+void IRAM_ATTR handleRightInterrupt()
+{
+  static uint32_t last = 0;
+  uint32_t now = millis();
+
+  if (now - last > 50)
+  { // debounce
+    rightPressed = true;
+    rightPressStart = now;
+  }
+
+  last = now;
+}
+
+volatile bool leftPressed = false;
+volatile uint32_t leftPressStart = 0;
+void IRAM_ATTR handleLeftInterrupt()
+{
+  static uint32_t last = 0;
+  uint32_t now = millis();
+
+  if (now - last > 50)
+  { // debounce
+    leftPressed = true;
+    leftPressStart = now;
   }
 
   last = now;
@@ -144,9 +173,10 @@ void setup()
   pinMode(BTN_RIGHT, INPUT_PULLUP);
   pinMode(BTN_LEFT, INPUT_PULLUP);
 
-  attachInterrupt(digitalPinToInterrupt(BTN_UP), handleResetInterrupt, FALLING);
-  attachInterrupt(digitalPinToInterrupt(BTN_DOWN), handleManaShuffleInterrupt, FALLING);
-  attachInterrupt(digitalPinToInterrupt(BTN_RIGHT), handleSortingInterrupt, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BTN_UP), handleUPInterrupt, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BTN_DOWN), handleDownInterrupt, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BTN_RIGHT), handleRightInterrupt, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BTN_LEFT), handleLeftInterrupt, FALLING);
   attachInterrupt(digitalPinToInterrupt(BTN_OK), handleOKInterrupt, FALLING);
 
   delay(2000);
@@ -166,9 +196,13 @@ void setup()
       }
       runStartMode(); // returns true when hold-to-menu triggered
     }
-    else
+    else if (mode == 1)
     {
       runTestingMode(); // returns true when hold-to-menu triggered
+    }
+    else if (mode == 2)
+    {
+      runCalibrateMode();
     }
     // Falls back to top of while(true) → showMenu() again
   }
@@ -359,26 +393,6 @@ bool runStartMode()
     switch (currentState)
     {
     case STATE_NEUTRAL:
-      if (resetRequested)
-      {
-        resetRequested = false;
-        resetCounters();
-        updateEveScreen();
-        break;
-      }
-      if (ManaShuffle)
-      {
-        ManaShuffle = false;
-        Serial.println("\n=== Mana Shuffle Initiated ===");
-        break;
-      }
-      if (Sorting)
-      {
-        Serial.println("\n=== Sorting Initiated ===");
-        Sorting = false;
-        break;
-      }
-
       Serial.println("\n=== WAITING FOR CARD ===");
       getTypeLine();
 
@@ -463,11 +477,9 @@ bool runTestingMode()
 
   while (true)
   {
-    // servos[1].writeMicroseconds(1500);
-    // calibrateServo(1);
-    servos[0].writeMicroseconds(1410); 
     if (digitalRead(BTN_OK) == LOW)
-    {   
+    {
+      servos[0].writeMicroseconds(1410);
       servos[0].writeMicroseconds(1610);
       delay(100);
       servos[0].writeMicroseconds(1510);
@@ -476,10 +488,14 @@ bool runTestingMode()
       servoForward(1, 100);
       servoForward(2, 100);
       servoForward(3, 100);
+      servoForward(4, 100);
+      servoForward(5, 100);
       delay(One_Card_Delay);
       servoStop(1);
       servoStop(2);
       servoStop(3);
+      servoStop(4);
+      servoStop(5);
     }
     if (digitalRead(BTN_DOWN) == LOW)
     {
@@ -498,6 +514,75 @@ bool runTestingMode()
 
     if (checkMenuHold())
       return true; // back to menu
+  }
+}
+
+bool runCalibrateMode()
+{
+  EVE_cmd_dl(CMD_DLSTART);
+  EVE_cmd_dl(DL_CLEAR_COLOR_RGB | 0xffffff);
+  EVE_cmd_dl(DL_CLEAR | CLR_COL | CLR_STN | CLR_TAG);
+  EVE_color_rgb(0x000000);
+  EVE_cmd_text(EVE_HSIZE / 2, EVE_VSIZE / 2 - 20, 27, EVE_OPT_CENTER, "CALIBRATE MODE");
+  EVE_cmd_text(EVE_HSIZE / 2, EVE_VSIZE / 2 + 20, 22, EVE_OPT_CENTER, "Hold OK 2s for menu");
+  EVE_cmd_dl(DL_DISPLAY);
+  EVE_cmd_dl(CMD_SWAP);
+
+  while (true)
+  {
+    if (digitalRead(BTN_OK) == LOW)
+    {
+      servoForward(1, 100);
+      servoForward(2, 100);
+      servoForward(3, 100);
+      servoForward(4, 100);
+      servoForward(5, 100);
+      delay(One_Card_Delay);
+      servoStop(1);
+      servoStop(2);
+      servoStop(3);
+      servoStop(4);
+      servoStop(5);
+      delay(500);
+    }
+    else if (digitalRead(BTN_DOWN) == LOW)
+    {
+      servoForward(1, 100);
+      //servoForward(2, 100);
+      //servoForward(3, 100);
+      //servoForward(4, 100);
+      //servoForward(5, 100);
+      delay(One_Card_Delay);
+      servoStop(1);
+      //servoStop(2);
+      //servoStop(3);
+      //servoStop(4);
+      //servoStop(5);
+      delay(500);
+    }
+    else if (digitalRead(BTN_UP) == LOW)
+    {
+      Serial.println("UP pressed");
+      servoBackward(4, 100);
+      delay(100);
+    }
+    else if (leftPressed)
+    {
+      leftPressed = false;
+      Serial.println("LEFT interrupt fired");
+      servoBackward(5, 100);
+      delay(100);
+    }
+    else if (rightPressed)
+    {
+      rightPressed = false;
+      Serial.println("RIGHT interrupt fired");
+      servoForward(5, 100);
+      delay(100);
+    }
+
+    if (checkMenuHold())
+      return true;
   }
 }
 
@@ -529,8 +614,12 @@ bool checkMenuHold()
 // ===== MENU =====
 int showMenu()
 {
+  // Grid layout:
+  // [0] Start     [1] Testing
+  // [2] Calibrate [3] (future)
+  const int COLS = 2;
+  const int ROWS = 2;
   int selected = 0;
-  const int NUM_OPTIONS = 2;
 
   while (digitalRead(BTN_OK) == LOW)
   {
@@ -541,30 +630,58 @@ int showMenu()
 
   while (true)
   {
+    if (digitalRead(BTN_LEFT) == LOW)
+    {
+      int col = selected % COLS;
+      if (col > 0)
+        selected--;
+      drawMenu(selected);
+      delay(200);
+    }
+    if (digitalRead(BTN_RIGHT) == LOW)
+    {
+      int col = selected % COLS;
+      if (col < COLS - 1)
+        selected++;
+      drawMenu(selected);
+      delay(200);
+    }
     if (digitalRead(BTN_UP) == LOW)
     {
-      selected = (selected - 1 + NUM_OPTIONS) % NUM_OPTIONS;
+      if (selected >= COLS)
+        selected -= COLS;
       drawMenu(selected);
       delay(200);
     }
     if (digitalRead(BTN_DOWN) == LOW)
     {
-      selected = (selected + 1) % NUM_OPTIONS;
+      if (selected + COLS < ROWS * COLS)
+        selected += COLS;
       drawMenu(selected);
       delay(200);
     }
     if (digitalRead(BTN_OK) == LOW)
     {
       delay(200);
-      return selected; // 0 = Start, 1 = Testing
+      return selected; // 0=Start, 1=Testing, 2=Calibrate, 3=future
     }
   }
 }
 
 void drawMenu(int selectedIndex)
 {
-  const char *options[] = {"Start", "Testing"};
-  const int NUM_OPTIONS = 2;
+  // Grid: [0]Start [1]Testing / [2]Calibrate [3](future)
+  const char *options[] = {"Start", "Testing", "Calibrate", ""};
+  const int NUM_OPTIONS = 4;
+  const int COLS = 2;
+
+  const int cellW = 120;
+  const int cellH = 44;
+  const int gapX = 20;
+  const int gapY = 20;
+  const int gridTotalW = COLS * cellW + (COLS - 1) * gapX; // 260
+  const int startX = (EVE_HSIZE - gridTotalW) / 2;
+  const int startY = 110;
 
   EVE_cmd_dl(CMD_DLSTART);
   EVE_cmd_dl(DL_CLEAR_COLOR_RGB | 0xffffff);
@@ -572,30 +689,57 @@ void drawMenu(int selectedIndex)
   EVE_color_rgb(0x000000);
 
   EVE_cmd_text(EVE_HSIZE / 2, 30, 30, EVE_OPT_CENTER, "MTG SORTER");
-  EVE_cmd_text(EVE_HSIZE / 2, 65, 24, EVE_OPT_CENTER, "Select Mode:");
+  EVE_cmd_text(EVE_HSIZE / 2, 68, 24, EVE_OPT_CENTER, "Select Mode:");
 
   for (int i = 0; i < NUM_OPTIONS; i++)
   {
-    int y = 120 + i * 60;
-    if (i == selectedIndex)
+    int col = i % COLS;
+    int row = i / COLS;
+    int x = startX + col * (cellW + gapX);
+    int y = startY + row * (cellH + gapY);
+
+    bool isFuture = (options[i][0] == '\0');
+    bool isSelected = (i == selectedIndex);
+
+    if (isFuture)
+    {
+      // dashed placeholder — draw as plain dim rect
+      EVE_cmd_dl(DL_COLOR_RGB | 0xcccccc);
+      EVE_cmd_dl(DL_BEGIN | EVE_RECTS);
+      EVE_cmd_dl(VERTEX2F(x * 16, y * 16));
+      EVE_cmd_dl(VERTEX2F((x + cellW) * 16, (y + cellH) * 16));
+      EVE_cmd_dl(DL_END);
+      EVE_color_rgb(0xaaaaaa);
+      EVE_cmd_text(x + cellW / 2, y + cellH / 2, 20, EVE_OPT_CENTER, "---");
+    }
+    else if (isSelected)
     {
       EVE_cmd_dl(DL_COLOR_RGB | 0x2255CC);
       EVE_cmd_dl(DL_BEGIN | EVE_RECTS);
-      EVE_cmd_dl(VERTEX2F((EVE_HSIZE / 2 - 80) * 16, (y - 18) * 16));
-      EVE_cmd_dl(VERTEX2F((EVE_HSIZE / 2 + 80) * 16, (y + 22) * 16));
+      EVE_cmd_dl(VERTEX2F(x * 16, y * 16));
+      EVE_cmd_dl(VERTEX2F((x + cellW) * 16, (y + cellH) * 16));
       EVE_cmd_dl(DL_END);
       EVE_color_rgb(0xffffff);
+      EVE_cmd_text(x + cellW / 2, y + cellH / 2, 27, EVE_OPT_CENTER, options[i]);
     }
     else
     {
+      EVE_cmd_dl(DL_COLOR_RGB | 0xeeeeee);
+      EVE_cmd_dl(DL_BEGIN | EVE_RECTS);
+      EVE_cmd_dl(VERTEX2F(x * 16, y * 16));
+      EVE_cmd_dl(VERTEX2F((x + cellW) * 16, (y + cellH) * 16));
+      EVE_cmd_dl(DL_END);
       EVE_color_rgb(0x000000);
+      EVE_cmd_text(x + cellW / 2, y + cellH / 2, 27, EVE_OPT_CENTER, options[i]);
     }
-    EVE_cmd_text(EVE_HSIZE / 2, y, 27, EVE_OPT_CENTER, options[i]);
+
     EVE_color_rgb(0x000000);
   }
 
-  EVE_cmd_text(EVE_HSIZE / 2, EVE_VSIZE - 25, 20, EVE_OPT_CENTER, "UP/DOWN select  OK confirm");
-  EVE_cmd_text(EVE_HSIZE / 2, EVE_VSIZE - 50, 20, EVE_OPT_CENTER, "Hold OK 2s to return here");
+  // Push hints well below the grid (startY + 2 rows + padding)
+  int hintY = startY + 2 * cellH + 1 * gapY + 30;
+  EVE_cmd_text(EVE_HSIZE / 2, hintY, 20, EVE_OPT_CENTER, "LEFT/RIGHT  UP/DOWN select");
+  EVE_cmd_text(EVE_HSIZE / 2, hintY + 24, 20, EVE_OPT_CENTER, "OK confirm  Hold OK 2s = menu");
 
   EVE_cmd_dl(DL_DISPLAY);
   EVE_cmd_dl(CMD_SWAP);
