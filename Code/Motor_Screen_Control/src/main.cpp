@@ -149,6 +149,7 @@ typedef enum
   STATE_ENCHANTMENT,
   STATE_ARTIFACT,
   STATE_PLANESWALKER,
+  STATE_SENDING_CARD, 
   STATE_LAND,
   STATE_UNKNOWN
 } State_t;
@@ -285,6 +286,13 @@ void getTypeLine()
 String normalizeType(String raw)
 {
   raw.toLowerCase();
+  bool hasLand = raw.indexOf("land") != -1;
+  bool hasArtifact = raw.indexOf("artifact") != -1;
+
+  // if a card is both an artifact and a land, prefer Land
+  if (hasLand && hasArtifact)
+    return "Land";
+
   if (raw.indexOf("creature") != -1)
     return "Creature";
   if (raw.indexOf("planeswalker") != -1)
@@ -299,9 +307,9 @@ String normalizeType(String raw)
     return "Sorcery";
   if (raw.indexOf("enchantment") != -1)
     return "Enchantment";
-  if (raw.indexOf("artifact") != -1)
+  if (hasArtifact)
     return "Artifact";
-  if (raw.indexOf("land") != -1)
+  if (hasLand)
     return "Land";
   return "Unknown";
 }
@@ -393,8 +401,7 @@ void resetCounters()
 bool runStartMode()
 {
   updateEveScreen();
-  State_t currentState = STATE_NEUTRAL;
-  servoToDegrees(0, 100);
+  State_t currentState = STATE_SENDING_CARD;
   while (true)
   {
     if (currentState == STATE_NEUTRAL && checkMenuHold())
@@ -402,6 +409,16 @@ bool runStartMode()
 
     switch (currentState)
     {
+    case STATE_SENDING_CARD:
+      servoToDegrees(0, 100);
+      GoForward(3, 2500, 500);
+      GoForward(2, 2500, 1000);
+      GoForward(1, 2500, 2000);
+      Stop(1, 1);
+      Stop(2, 1);
+      Stop(3, 1);
+      currentState = STATE_NEUTRAL;
+      break;
     case STATE_NEUTRAL:
       Serial.println("\n=== WAITING FOR CARD ===");
       getTypeLine();
@@ -436,7 +453,7 @@ bool runStartMode()
       break;
 
     case STATE_LAND:
-      GoForward(4, 1600, 770);
+      GoForward(4, 1600, 1000);
       Stop(4, 1);
       delay(100);
       servoToDegrees(0, 122);
@@ -444,41 +461,50 @@ bool runStartMode()
       servoToDegrees(0, 110);
       delay(100);
       servoToDegrees(0, 120);
+      delay(25);
+      for (int i = 0; i < 10; i++)
+      {
+      servoToDegrees(0, 110);
+      delay(25);
+      servoToDegrees(0, 120);
+      delay(25);
+      }
+      
       delay(500);
       Serial.println("LAND SORTED");
       processCardType("Land");
       updateEveScreen();
-      GoForward(4, 1370, 770);
+      GoForward(4, 1370, 1000);
       Stop(4, 1);
-      currentState = STATE_NEUTRAL;
+      currentState = STATE_SENDING_CARD;
       break;
     case STATE_CREATURE:
       processCardType("Creature");
-      currentState = STATE_NEUTRAL;
+      currentState = STATE_SENDING_CARD;
       break;
     case STATE_ARTIFACT:
       processCardType("Artifact");
-      currentState = STATE_NEUTRAL;
+      currentState = STATE_SENDING_CARD;
       break;
     case STATE_ENCHANTMENT:
       processCardType("Enchantment");
-      currentState = STATE_NEUTRAL;
+      currentState = STATE_SENDING_CARD;
       break;
     case STATE_INSTANT:
       processCardType("Instant");
-      currentState = STATE_NEUTRAL;
+      currentState = STATE_SENDING_CARD;
       break;
     case STATE_SORCERY:
       processCardType("Sorcery");
-      currentState = STATE_NEUTRAL;
+      currentState = STATE_SENDING_CARD;
       break;
     case STATE_PLANESWALKER:
       processCardType("Planeswalker");
-      currentState = STATE_NEUTRAL;
+      currentState = STATE_SENDING_CARD;
       break;
     case STATE_UNKNOWN:
       processCardType("Unknown");
-      currentState = STATE_NEUTRAL;
+      currentState = STATE_SENDING_CARD;
       break;
     }
   }
