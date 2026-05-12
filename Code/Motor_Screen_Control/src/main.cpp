@@ -410,7 +410,10 @@ bool runStartMode()
     switch (currentState)
     {
     case STATE_SENDING_CARD:
+      // Match testing behavior: small delays around initial servo position
+      delay(150);
       servoToDegrees(0, 100);
+      delay(150);
       GoForward(3, 2500, 500);
       GoForward(2, 2500, 1000);
       GoForward(1, 2500, 2000);
@@ -422,7 +425,10 @@ bool runStartMode()
     case STATE_NEUTRAL:
       Serial.println("\n=== WAITING FOR CARD ===");
       getTypeLine();
-
+      if(upPressed) {
+        upPressed = false;
+        currentState = STATE_SENDING_CARD;
+      }
       if (normalized == "" || normalized == "Unknown")
       {
         Serial.println("No valid card yet, retrying...");
@@ -453,7 +459,8 @@ bool runStartMode()
       break;
 
     case STATE_LAND:
-      GoForward(4, 1600, 1000);
+      // Use the same motor sequence as testing
+      GoForward(4, 1650, 700);
       Stop(4, 1);
       delay(100);
       servoToDegrees(0, 122);
@@ -462,7 +469,7 @@ bool runStartMode()
       delay(100);
       servoToDegrees(0, 120);
       delay(25);
-      for (int i = 0; i < 10; i++)
+      for (int i = 0; i < 15; i++)
       {
         servoToDegrees(0, 110);
         delay(25);
@@ -474,12 +481,34 @@ bool runStartMode()
       Serial.println("LAND SORTED");
       processCardType("Land");
       updateEveScreen();
-      GoForward(4, 1370, 1000);
+      GoForward(4, 1358, 700);
       Stop(4, 1);
       currentState = STATE_SENDING_CARD;
       break;
     case STATE_CREATURE:
+      // Apply testing-mode creature sequence in start mode as well
+      GoForward(5, 1650, 590);
+      Stop(5, 1);
+      delay(100);
+      servoToDegrees(0, 78);
+      delay(100);
+      servoToDegrees(0, 90);
+      delay(100);
+      servoToDegrees(0, 80);
+      delay(25);
+      for (int i = 0; i < 15; i++)
+      {
+        servoToDegrees(0, 90);
+        delay(25);
+        servoToDegrees(0, 80);
+        delay(25);
+      }
+      delay(500);
+      Serial.println("CREATURE SORTED");
       processCardType("Creature");
+      updateEveScreen();
+      GoForward(5, 1350, 555);
+      Stop(5, 1);
       currentState = STATE_SENDING_CARD;
       break;
     case STATE_ARTIFACT:
@@ -658,7 +687,7 @@ bool runTestingMode()
       Serial.println("TESTING: CREATURE SORTED");
       processCardType("Creature");
       updateEveScreen();
-      GoForward(5, 1350, 547);
+      GoForward(5, 1350, 555);
       Stop(5, 1);
       currentState = STATE_SENDING_CARD;
       break;
