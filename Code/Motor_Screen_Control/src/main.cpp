@@ -149,7 +149,7 @@ typedef enum
   STATE_ENCHANTMENT,
   STATE_ARTIFACT,
   STATE_PLANESWALKER,
-  STATE_SENDING_CARD, 
+  STATE_SENDING_CARD,
   STATE_LAND,
   STATE_UNKNOWN
 } State_t;
@@ -464,12 +464,12 @@ bool runStartMode()
       delay(25);
       for (int i = 0; i < 10; i++)
       {
-      servoToDegrees(0, 110);
-      delay(25);
-      servoToDegrees(0, 120);
-      delay(25);
+        servoToDegrees(0, 110);
+        delay(25);
+        servoToDegrees(0, 120);
+        delay(25);
       }
-      
+
       delay(500);
       Serial.println("LAND SORTED");
       processCardType("Land");
@@ -513,92 +513,106 @@ bool runStartMode()
 bool runTestingMode()
 {
   updateEveScreen();
-  Serial.println("=== ENTERING TESTING MODE (manual input) ===");
+  Serial.println("=== ENTERING TESTING MODE (manual input, start-like sequence) ===");
   Serial.println("Type a card type and press Enter:");
   Serial.println("Valid: creature, instant, sorcery, enchantment, artifact, land, planeswalker, battle, kindred");
   Serial.println("Type 'reset' to reset counters.");
   Serial.println("Hold OK 2s to exit.");
 
-  State_t currentState = STATE_NEUTRAL;
+  State_t currentState = STATE_SENDING_CARD;
 
   while (true)
   {
-    // Allow exit back to menu
+    // Allow exit back to menu only when in NEUTRAL to match start behavior
     if (currentState == STATE_NEUTRAL && checkMenuHold())
       return true;
 
     switch (currentState)
     {
+    case STATE_SENDING_CARD:
+      delay(100);
+      servoToDegrees(0, 100);
+      delay(100);
+      GoForward(3, 2500, 500);
+      GoForward(2, 2500, 1000);
+      GoForward(1, 2500, 2000);
+      Stop(1, 1);
+      Stop(2, 1);
+      Stop(3, 1);
+      currentState = STATE_NEUTRAL;
+      break;
+
     case STATE_NEUTRAL:
-    {
       Serial.println("\n=== TESTING: WAITING FOR INPUT ===");
       servoToDegrees(0, 100);
       Serial.print("Enter card type: ");
 
       // ---- Manual input ----
-      String input = "";
-      while (true)
       {
-        if (Serial.available())
+        String input = "";
+        while (true)
         {
-          char c = Serial.read();
-          if (c == '\n' || c == '\r')
+          if (Serial.available())
           {
-            if (input.length() > 0)
-              break;
+            char c = Serial.read();
+            if (c == '\n' || c == '\r')
+            {
+              if (input.length() > 0)
+                break;
+            }
+            else
+            {
+              input += c;
+            }
           }
-          else
-          {
-            input += c;
-          }
+
+          if (checkMenuHold())
+            return true;
+
+          delay(10);
         }
 
-        if (checkMenuHold())
-          return true;
+        input.trim();
+        Serial.println(input);
+
+        if (input.equalsIgnoreCase("reset"))
+        {
+          resetCounters();
+          updateEveScreen();
+          break;
+        }
+
+        normalized = normalizeType(input);
+
+        if (normalized == "" || normalized == "Unknown")
+        {
+          Serial.println("TESTING: Unrecognized type, try again.");
+          break;
+        }
+
+        Serial.println("TESTING: Got type: " + normalized);
+
+        if (normalized == "Creature")
+          currentState = STATE_CREATURE;
+        else if (normalized == "Instant")
+          currentState = STATE_INSTANT;
+        else if (normalized == "Sorcery")
+          currentState = STATE_SORCERY;
+        else if (normalized == "Enchantment")
+          currentState = STATE_ENCHANTMENT;
+        else if (normalized == "Artifact")
+          currentState = STATE_ARTIFACT;
+        else if (normalized == "Planeswalker" || normalized == "Battle" || normalized == "Kindred")
+          currentState = STATE_PLANESWALKER;
+        else if (normalized == "Land")
+          currentState = STATE_LAND;
+        else
+          currentState = STATE_UNKNOWN;
       }
-
-      input.trim();
-      Serial.println(input);
-
-      if (input.equalsIgnoreCase("reset"))
-      {
-        resetCounters();
-        updateEveScreen();
-        break;
-      }
-
-      normalized = normalizeType(input);
-
-      if (normalized == "" || normalized == "Unknown")
-      {
-        Serial.println("TESTING: Unrecognized type, try again.");
-        break;
-      }
-
-      Serial.println("TESTING: Got type: " + normalized);
-
-      if (normalized == "Creature")
-        currentState = STATE_CREATURE;
-      else if (normalized == "Instant")
-        currentState = STATE_INSTANT;
-      else if (normalized == "Sorcery")
-        currentState = STATE_SORCERY;
-      else if (normalized == "Enchantment")
-        currentState = STATE_ENCHANTMENT;
-      else if (normalized == "Artifact")
-        currentState = STATE_ARTIFACT;
-      else if (normalized == "Planeswalker" || normalized == "Battle" || normalized == "Kindred")
-        currentState = STATE_PLANESWALKER;
-      else if (normalized == "Land")
-        currentState = STATE_LAND;
-      else
-        currentState = STATE_UNKNOWN;
-
       break;
-    }
 
     case STATE_LAND:
-      GoForward(4, 1600, 770);
+      GoForward(4, 1650, 700);
       Stop(4, 1);
       delay(100);
       servoToDegrees(0, 122);
@@ -606,62 +620,89 @@ bool runTestingMode()
       servoToDegrees(0, 110);
       delay(100);
       servoToDegrees(0, 120);
+      delay(25);
+      for (int i = 0; i < 15; i++)
+      {
+        servoToDegrees(0, 110);
+        delay(25);
+        servoToDegrees(0, 120);
+        delay(25);
+      }
       delay(500);
       Serial.println("TESTING: LAND SORTED");
       processCardType("Land");
       updateEveScreen();
-      GoForward(4, 1370, 770);
+      GoForward(4, 1358, 700);
       Stop(4, 1);
-      currentState = STATE_NEUTRAL;
+      currentState = STATE_SENDING_CARD;
       break;
 
     case STATE_CREATURE:
+      GoForward(5, 1650, 590);
+      Stop(5, 1);
+      delay(100);
+      servoToDegrees(0, 78);
+      delay(100);
+      servoToDegrees(0, 90);
+      delay(100);
+      servoToDegrees(0, 80);
+      delay(25);
+      for (int i = 0; i < 15; i++)
+      {
+        servoToDegrees(0, 90);
+        delay(25);
+        servoToDegrees(0, 80);
+        delay(25);
+      }
+      delay(500);
       Serial.println("TESTING: CREATURE SORTED");
       processCardType("Creature");
       updateEveScreen();
-      currentState = STATE_NEUTRAL;
+      GoForward(5, 1350, 547);
+      Stop(5, 1);
+      currentState = STATE_SENDING_CARD;
       break;
 
     case STATE_ARTIFACT:
       Serial.println("TESTING: ARTIFACT SORTED");
       processCardType("Artifact");
       updateEveScreen();
-      currentState = STATE_NEUTRAL;
+      currentState = STATE_SENDING_CARD;
       break;
 
     case STATE_ENCHANTMENT:
       Serial.println("TESTING: ENCHANTMENT SORTED");
       processCardType("Enchantment");
       updateEveScreen();
-      currentState = STATE_NEUTRAL;
+      currentState = STATE_SENDING_CARD;
       break;
 
     case STATE_INSTANT:
       Serial.println("TESTING: INSTANT SORTED");
       processCardType("Instant");
       updateEveScreen();
-      currentState = STATE_NEUTRAL;
+      currentState = STATE_SENDING_CARD;
       break;
 
     case STATE_SORCERY:
       Serial.println("TESTING: SORCERY SORTED");
       processCardType("Sorcery");
       updateEveScreen();
-      currentState = STATE_NEUTRAL;
+      currentState = STATE_SENDING_CARD;
       break;
 
     case STATE_PLANESWALKER:
       Serial.println("TESTING: PLANESWALKER SORTED");
       processCardType("Planeswalker");
       updateEveScreen();
-      currentState = STATE_NEUTRAL;
+      currentState = STATE_SENDING_CARD;
       break;
 
     case STATE_UNKNOWN:
       Serial.println("TESTING: UNKNOWN SORTED");
       processCardType("Unknown");
       updateEveScreen();
-      currentState = STATE_NEUTRAL;
+      currentState = STATE_SENDING_CARD;
       break;
     }
   }
@@ -801,10 +842,17 @@ void drawMenu(int selectedIndex)
   const int startX = (EVE_HSIZE - gridTotalW) / 2;
   const int startY = 110;
 
+  // Color palette (purple / beige)
+  const uint32_t BEIGE_BG = 0xEBDDBA;     // overall background
+  const uint32_t CELL_BEIGE = 0xF5F5DC;   // unselected cell
+  const uint32_t SELECTED_PURPLE = 0x663399; // selected cell
+  const uint32_t TEXT_PURPLE = 0x4B2B7F;  // text for unselected
+  const uint32_t TEXT_BEIGE = 0xF5F5DC;   // text for selected (light)
+
   EVE_cmd_dl(CMD_DLSTART);
-  EVE_cmd_dl(DL_CLEAR_COLOR_RGB | 0xffffff);
+  EVE_cmd_dl(DL_CLEAR_COLOR_RGB | BEIGE_BG);
   EVE_cmd_dl(DL_CLEAR | CLR_COL | CLR_STN | CLR_TAG);
-  EVE_color_rgb(0x000000);
+  EVE_color_rgb(TEXT_PURPLE);
 
   EVE_cmd_text(EVE_HSIZE / 2, 30, 30, EVE_OPT_CENTER, "MTG SORTER");
   EVE_cmd_text(EVE_HSIZE / 2, 68, 24, EVE_OPT_CENTER, "Select Mode:");
@@ -821,41 +869,46 @@ void drawMenu(int selectedIndex)
 
     if (isFuture)
     {
-      // dashed placeholder — draw as plain dim rect
-      EVE_cmd_dl(DL_COLOR_RGB | 0xcccccc);
+      // placeholder: darker beige rectangle with muted text
+      EVE_cmd_dl(DL_COLOR_RGB | 0xD3C5A8);
       EVE_cmd_dl(DL_BEGIN | EVE_RECTS);
       EVE_cmd_dl(VERTEX2F(x * 16, y * 16));
       EVE_cmd_dl(VERTEX2F((x + cellW) * 16, (y + cellH) * 16));
       EVE_cmd_dl(DL_END);
-      EVE_color_rgb(0xaaaaaa);
+      EVE_color_rgb(TEXT_PURPLE);
       EVE_cmd_text(x + cellW / 2, y + cellH / 2, 20, EVE_OPT_CENTER, "---");
     }
     else if (isSelected)
     {
-      EVE_cmd_dl(DL_COLOR_RGB | 0x2255CC);
+      // selected: purple rect, light text
+      EVE_cmd_dl(DL_COLOR_RGB | SELECTED_PURPLE);
       EVE_cmd_dl(DL_BEGIN | EVE_RECTS);
       EVE_cmd_dl(VERTEX2F(x * 16, y * 16));
       EVE_cmd_dl(VERTEX2F((x + cellW) * 16, (y + cellH) * 16));
       EVE_cmd_dl(DL_END);
-      EVE_color_rgb(0xffffff);
+      EVE_color_rgb(TEXT_BEIGE);
       EVE_cmd_text(x + cellW / 2, y + cellH / 2, 27, EVE_OPT_CENTER, options[i]);
     }
     else
     {
-      EVE_cmd_dl(DL_COLOR_RGB | 0xeeeeee);
+      // unselected: beige rect, purple text
+      EVE_cmd_dl(DL_COLOR_RGB | CELL_BEIGE);
       EVE_cmd_dl(DL_BEGIN | EVE_RECTS);
       EVE_cmd_dl(VERTEX2F(x * 16, y * 16));
       EVE_cmd_dl(VERTEX2F((x + cellW) * 16, (y + cellH) * 16));
       EVE_cmd_dl(DL_END);
-      EVE_color_rgb(0x000000);
+      EVE_color_rgb(TEXT_PURPLE);
       EVE_cmd_text(x + cellW / 2, y + cellH / 2, 27, EVE_OPT_CENTER, options[i]);
     }
 
-    EVE_color_rgb(0x000000);
+    // reset to purple for any small decorations
+    EVE_color_rgb(TEXT_PURPLE);
   }
 
   // Push hints well below the grid (startY + 2 rows + padding)
   int hintY = startY + 2 * cellH + 1 * gapY + 30;
+  // hint text in purple for contrast
+  EVE_color_rgb(TEXT_PURPLE);
   EVE_cmd_text(EVE_HSIZE / 2, hintY, 20, EVE_OPT_CENTER, "LEFT/RIGHT  UP/DOWN select");
   EVE_cmd_text(EVE_HSIZE / 2, hintY + 24, 20, EVE_OPT_CENTER, "OK confirm  Hold OK 2s = menu");
 
