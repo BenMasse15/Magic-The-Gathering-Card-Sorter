@@ -451,7 +451,7 @@ bool runStartMode()
       delay(150);
       GoForward(3, 2500, 500);
       GoForward(2, 2500, 1000);
-      GoForward(1, 2500, 2500);
+      GoForward(1, 2500, 3500);
       Stop(1, 1);
       Stop(2, 1);
       Stop(3, 1);
@@ -487,7 +487,7 @@ bool runStartMode()
       if (normalized == "" || normalized == "Unknown")
       {
         Scan_Attempts++;
-        if (Scan_Attempts >= 100)
+        if (Scan_Attempts >= 1000)
         {
           Serial.println("Read failed 10 times. Sending to Unknown.");
           Scan_Attempts = 0;
@@ -525,7 +525,7 @@ bool runStartMode()
       currentStatus = "Sorting Creature...";
       lastCardType = "Creature";
       updateEveScreen();
-      GoForward(5, 1650, 480);
+      GoForward(5, 1650, 685);
       Stop(5, 1);
       delay(500);
       servoToDegrees(0, 78);
@@ -534,17 +534,17 @@ bool runStartMode()
       delay(100);
       servoToDegrees(0, 80);
       delay(25);
-      for (int i = 0; i < 15; i++)
+      for (int i = 0; i < 25; i++)
       {
         servoToDegrees(0, 90);
         delay(25);
-        servoToDegrees(0, 80);
+        servoToDegrees(0, 75);
         delay(25);
       }
       delay(500);
       processCardType("Creature");
       updateEveScreen();
-      GoForward(5, 1350, 465);
+      GoForward(5, 1350, 635);
       Stop(5, 1);
       currentState = STATE_SENDING_CARD;
       break;
@@ -553,7 +553,7 @@ bool runStartMode()
       currentStatus = "Sorting Instant...";
       lastCardType = "Instant";
       updateEveScreen();
-      GoForward(5, 1650, 1560);
+      GoForward(5, 1650, 2200);
       Stop(5, 1);
       delay(500);
       servoToDegrees(0, 78);
@@ -562,17 +562,17 @@ bool runStartMode()
       delay(100);
       servoToDegrees(0, 80);
       delay(25);
-      for (int i = 0; i < 15; i++)
+      for (int i = 0; i < 25; i++)
       {
         servoToDegrees(0, 90);
         delay(25);
-        servoToDegrees(0, 80);
+        servoToDegrees(0, 75);
         delay(25);
       }
       delay(500);
       processCardType("Instant");
       updateEveScreen();
-      GoForward(5, 1350, 1373);
+      GoForward(5, 1350, 2055);
       Stop(5, 1);
       currentState = STATE_SENDING_CARD;
       break;
@@ -581,7 +581,7 @@ bool runStartMode()
       currentStatus = "Sorting Sorcery...";
       lastCardType = "Sorcery";
       updateEveScreen();
-      GoForward(4, 1650, 1595);
+      GoForward(4, 1650, 2295);
       Stop(4, 1);
       delay(500);
       servoToDegrees(0, 122);
@@ -590,17 +590,17 @@ bool runStartMode()
       delay(100);
       servoToDegrees(0, 120);
       delay(25);
-      for (int i = 0; i < 15; i++)
+      for (int i = 0; i < 25; i++)
       {
         servoToDegrees(0, 110);
         delay(25);
-        servoToDegrees(0, 120);
+        servoToDegrees(0, 125);
         delay(25);
       }
       delay(500);
       processCardType("Sorcery");
       updateEveScreen();
-      GoForward(4, 1350, 1475);
+      GoForward(4, 1350, 2155);
       Stop(4, 1);
       currentState = STATE_SENDING_CARD;
       break;
@@ -609,7 +609,7 @@ bool runStartMode()
       currentStatus = "Sorting Enchantment...";
       lastCardType = "Enchantment";
       updateEveScreen();
-      GoForward(4, 1650, 560);
+      GoForward(4, 1650, 820);
       Stop(4, 1);
       delay(500);
       servoToDegrees(0, 122);
@@ -618,17 +618,17 @@ bool runStartMode()
       delay(100);
       servoToDegrees(0, 120);
       delay(25);
-      for (int i = 0; i < 15; i++)
+      for (int i = 0; i < 25; i++)
       {
         servoToDegrees(0, 110);
         delay(25);
-        servoToDegrees(0, 120);
+        servoToDegrees(0, 125);
         delay(25);
       }
       delay(500);
       processCardType("Enchantment");
       updateEveScreen();
-      GoForward(4, 1350, 520);
+      GoForward(4, 1350, 750);
       Stop(4, 1);
       currentState = STATE_SENDING_CARD;
       break;
@@ -637,7 +637,7 @@ bool runStartMode()
       currentStatus = "Sorting Artifact...";
       lastCardType = "Artifact";
       updateEveScreen();
-      GoForward(4, 1350, 1370);
+      GoForward(4, 1350, 2000);
       Stop(4, 1);
       delay(500);
       servoToDegrees(0, 122);
@@ -646,17 +646,17 @@ bool runStartMode()
       delay(100);
       servoToDegrees(0, 120);
       delay(25);
-      for (int i = 0; i < 15; i++)
+      for (int i = 0; i < 25; i++)
       {
         servoToDegrees(0, 110);
         delay(25);
-        servoToDegrees(0, 120);
+        servoToDegrees(0, 125);
         delay(25);
       }
       delay(500);
       processCardType("Artifact");
       updateEveScreen();
-      GoForward(4, 1650, 1510);
+      GoForward(4, 1650, 2075);
       Stop(4, 1);
       currentState = STATE_SENDING_CARD;
       break;
@@ -665,7 +665,7 @@ bool runStartMode()
       currentStatus = "Sorting Land...";
       lastCardType = "Land";
       updateEveScreen();
-      GoForward(4, 1350, 460);
+      GoForward(4, 1350, 650);
       Stop(4, 1);
       delay(500);
       servoToDegrees(0, 122);
@@ -674,17 +674,17 @@ bool runStartMode()
       delay(100);
       servoToDegrees(0, 120);
       delay(25);
-      for (int i = 0; i < 15; i++)
+      for (int i = 0; i < 25; i++)
       {
         servoToDegrees(0, 110);
         delay(25);
-        servoToDegrees(0, 120);
+        servoToDegrees(0, 125);
         delay(25);
       }
       delay(500);
       processCardType("Land");
       updateEveScreen();
-      GoForward(4, 1650, 495);
+      GoForward(4, 1650, 675);
       Stop(4, 1);
       currentState = STATE_SENDING_CARD;
       break;
@@ -736,7 +736,7 @@ bool runStartMode()
       currentStatus = "Sorting Planeswalker...";
       lastCardType = "Planeswalker";
       updateEveScreen();
-      GoForward(5, 1350, 1495);
+      GoForward(5, 1350, 2030);
       Stop(5, 1);
       delay(500);
       servoToDegrees(0, 78);
@@ -745,17 +745,17 @@ bool runStartMode()
       delay(100);
       servoToDegrees(0, 80);
       delay(25);
-      for (int i = 0; i < 15; i++)
+      for (int i = 0; i < 25; i++)
       {
         servoToDegrees(0, 90);
         delay(25);
-        servoToDegrees(0, 80);
+        servoToDegrees(0, 75);
         delay(25);
       }
       delay(500);
       processCardType("Planeswalker");
       updateEveScreen();
-      GoForward(5, 1650, 1635);
+      GoForward(5, 1650, 2170);
       Stop(5, 1);
       currentState = STATE_SENDING_CARD;
       break;
@@ -764,7 +764,7 @@ bool runStartMode()
       currentStatus = "Sorting Unknown...";
       lastCardType = "Unknown";
       updateEveScreen();
-      GoForward(5, 1350, 540);
+      GoForward(5, 1350, 725);
       Stop(5, 1);
       delay(500);
       servoToDegrees(0, 78);
@@ -773,17 +773,17 @@ bool runStartMode()
       delay(100);
       servoToDegrees(0, 80);
       delay(25);
-      for (int i = 0; i < 15; i++)
+      for (int i = 0; i < 25; i++)
       {
         servoToDegrees(0, 90);
         delay(25);
-        servoToDegrees(0, 80);
+        servoToDegrees(0, 75);
         delay(25);
       }
       delay(500);
       processCardType("Unknown");
       updateEveScreen();
-      GoForward(5, 1650, 580);
+      GoForward(5, 1650, 760);
       Stop(5, 1);
       currentState = STATE_SENDING_CARD;
       break;
